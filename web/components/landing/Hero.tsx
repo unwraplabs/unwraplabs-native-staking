@@ -25,8 +25,15 @@ export function Hero({ stats, prices }: { stats: ValidatorStats; prices: Prices 
           Unwrap Labs builds foundational infrastructure on Starknet —{" "}
           <span className="font-medium text-ink">Endur</span>, its liquid staking protocol for STRK
           and Bitcoin, and <span className="font-medium text-ink">Troves</span>, its yield layer. We
-          run this validator too. Staking here is fully native: you delegate directly, keep your
-          position, and every number below links to somewhere you can check it.
+          run this validator too.
+        </p>
+      </Reveal>
+
+      {/* Secondary to the line above: a smaller size and lighter ink, so the
+          two read in order rather than competing. */}
+      <Reveal delay={0.14} onMount>
+        <p className="mt-3 max-w-[58ch] text-[15px] leading-relaxed text-ink-3">
+          Staking here is fully native: you delegate directly, keep your position and rewards.
         </p>
       </Reveal>
 

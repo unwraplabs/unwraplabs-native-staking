@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "keeper": "node --experimental-strip-types scripts/keeper.ts"
+    "keeper": "node --experimental-strip-types scripts/keeper.ts",
+    "build:isolated": "rm -rf /tmp/unwrap-web-build && mkdir -p /tmp/unwrap-web-build && rsync -a --exclude node_modules --exclude .next --exclude .git . /tmp/unwrap-web-build/ && cd /tmp/unwrap-web-build && npm ci --silent && npm run build"
   },
   "dependencies": {
     "@starknet-react/chains": "^5.0.3",
