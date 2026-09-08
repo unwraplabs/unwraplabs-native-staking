@@ -78,7 +78,7 @@ export function HoldingsCard({
 
   return (
     <div className="border border-line p-5">
-      <h3 className="text-[15px] font-semibold tracking-[-0.02em]">Holdings</h3>
+      <h3 className="text-[15px] font-semibold tracking-[-0.02em]">Your wallet holdings</h3>
       <div className="mt-2">
         <Row label="Connected wallet" holdings={wallet} prices={prices} />
         {others.map((o) => (
