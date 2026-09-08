@@ -1,0 +1,19 @@
+{
+  "name": "unwraplabs-staking-deploy",
+  "private": true,
+  "description": "Deploy tooling. A separate package on purpose: the strkfarm SDK pins starknet 9.2.1, while web/ is held at starknet 8 by starknet-react and starknetkit. Isolating them lets each have the version it requires.",
+  "scripts": {
+    "deploy": "tsx deploy.ts",
+    "deploy:dry": "tsx deploy.ts --dry-run"
+  },
+  "dependencies": {
+    "@strkfarm/sdk": "2.0.0-dev.54",
+    "dotenv": "^17.4.2",
+    "starknet": "9.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}

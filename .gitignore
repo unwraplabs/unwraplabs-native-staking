@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+target/
+.env
+.env*.local
+.vercel
+.DS_Store
+*.log
+snfoundry_trace/
+coverage/
+contracts/.snfoundry_cache/
+web/tsconfig.tsbuildinfo
+scripts/node_modules/
+contracts/contracts.json
+.claude/

@@ -1,0 +1,36 @@
+{
+  "name": "unwraplabs-validator",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node ../scripts/sync-abi.mjs",
+    "dev": "next dev -p 3000",
+    "prebuild": "node ../scripts/sync-abi.mjs",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "keeper": "node --experimental-strip-types scripts/keeper.ts"
+  },
+  "dependencies": {
+    "@starknet-react/chains": "^5.0.3",
+    "@starknet-react/core": "^5.0.3",
+    "framer-motion": "^11.18.2",
+    "get-starknet-core": "^4.0.0",
+    "next": "^14.2.33",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "starknet": "^8.9.2",
+    "starknetkit": "^3.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.20.1",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}

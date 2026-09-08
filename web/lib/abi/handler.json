@@ -1,0 +1,351 @@
+[
+  {
+    "type": "impl",
+    "name": "Handler",
+    "interface_name": "unwrap_staking::handler::IRewardsHandler"
+  },
+  {
+    "type": "struct",
+    "name": "core::integer::u256",
+    "members": [
+      {
+        "name": "low",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "high",
+        "type": "core::integer::u128"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "unwrap_staking::interfaces::Route",
+    "members": [
+      {
+        "name": "token_from",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "token_to",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "exchange_address",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "percent",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "additional_swap_params",
+        "type": "core::array::Array::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "unwrap_staking::handler::Config",
+    "members": [
+      {
+        "name": "pool",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "pool_member",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "payout",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "reward_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "out_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "max_slippage_bps",
+        "type": "core::integer::u16"
+      },
+      {
+        "name": "pair_in",
+        "type": "core::felt252"
+      },
+      {
+        "name": "pair_out",
+        "type": "core::felt252"
+      },
+      {
+        "name": "oracle",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "router",
+        "type": "core::starknet::contract_address::ContractAddress"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "unwrap_staking::handler::IRewardsHandler",
+    "items": [
+      {
+        "type": "function",
+        "name": "claim",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u256"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "dispatch",
+        "inputs": [
+          {
+            "name": "amount",
+            "type": "core::integer::u256"
+          },
+          {
+            "name": "min_out",
+            "type": "core::integer::u256"
+          },
+          {
+            "name": "routes",
+            "type": "core::array::Array::<unwrap_staking::interfaces::Route>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "claim_and_dispatch",
+        "inputs": [
+          {
+            "name": "amount",
+            "type": "core::integer::u256"
+          },
+          {
+            "name": "min_out",
+            "type": "core::integer::u256"
+          },
+          {
+            "name": "routes",
+            "type": "core::array::Array::<unwrap_staking::interfaces::Route>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "sweep",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "escape",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "config",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "unwrap_staking::handler::Config"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "held",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u256"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "floor_for",
+        "inputs": [
+          {
+            "name": "amount",
+            "type": "core::integer::u256"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u256"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "pool_member",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "payout",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "reward_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "reward_decimals",
+        "type": "core::integer::u8"
+      },
+      {
+        "name": "out_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "out_decimals",
+        "type": "core::integer::u8"
+      },
+      {
+        "name": "pair_in",
+        "type": "core::felt252"
+      },
+      {
+        "name": "pair_out",
+        "type": "core::felt252"
+      },
+      {
+        "name": "oracle",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "router",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "max_slippage_bps",
+        "type": "core::integer::u16"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::handler::RewardsHandler::Claimed",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "amount",
+        "type": "core::integer::u256",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::handler::RewardsHandler::Dispatched",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "token_out",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "amount_in",
+        "type": "core::integer::u256",
+        "kind": "data"
+      },
+      {
+        "name": "amount_out",
+        "type": "core::integer::u256",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::handler::RewardsHandler::Swept",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "token",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "amount",
+        "type": "core::integer::u256",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::handler::RewardsHandler::Escaped",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "amount",
+        "type": "core::integer::u256",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::handler::RewardsHandler::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "Claimed",
+        "type": "unwrap_staking::handler::RewardsHandler::Claimed",
+        "kind": "nested"
+      },
+      {
+        "name": "Dispatched",
+        "type": "unwrap_staking::handler::RewardsHandler::Dispatched",
+        "kind": "nested"
+      },
+      {
+        "name": "Swept",
+        "type": "unwrap_staking::handler::RewardsHandler::Swept",
+        "kind": "nested"
+      },
+      {
+        "name": "Escaped",
+        "type": "unwrap_staking::handler::RewardsHandler::Escaped",
+        "kind": "nested"
+      }
+    ]
+  }
+]

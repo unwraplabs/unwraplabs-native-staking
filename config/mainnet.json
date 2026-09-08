@@ -1,0 +1,46 @@
+{
+  "network": "mainnet",
+  "chainId": "0x534e5f4d41494e",
+  "rpc": "https://api.cartridge.gg/x/starknet/mainnet",
+  "strk": {
+    "address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "decimals": 18,
+    "pair": "STRK/USD"
+  },
+  "oracle": "0x2a85bd616f912537c50a49a4076db02c00b29b2cdc8a197ce92ed1837fa875b",
+  "router": "0x4270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
+  "_pairs": "Every non-STRK asset is priced off WBTC/USD: it is the only BTC feed on Pragma with its own dedicated, well-sourced median (8 sources). Run scripts/verify-feeds.mjs before any deploy — the handler refuses a feed with fewer than 3 aggregated sources, so a thinning feed disables swaps rather than degrading them.",
+  "outTokens": [
+    {
+      "symbol": "WBTC",
+      "address": "0x3fe2b97c1fd336e750087d68b9b867997fd64a2661ff3ca5a7c771641e8e7ac",
+      "decimals": 8,
+      "pair": "WBTC/USD",
+      "note": "Own feed, 8 sources."
+    },
+    {
+      "symbol": "strkBTC",
+      "address": "0x787150e306e6eae6e3f79dea881770e8bbff2c1b8eb490f969669ee945b3135",
+      "decimals": 8,
+      "pair": "WBTC/USD",
+      "note": "Priced off WBTC/USD. No STRKBTC/USD feed exists on Pragma; WBTC is the closest liquid BTC reference with a sound feed (8 sources)."
+    },
+    {
+      "symbol": "SolvBTC",
+      "address": "0x593e034dda23eea82d2ba9a30960ed42cf4a01502cc2351dc9b9881f9931a68",
+      "decimals": 18,
+      "pair": "WBTC/USD",
+      "note": "Priced off WBTC/USD. No SOLVBTC/USD feed exists on Pragma. Note the 18 decimals, unlike WBTC and strkBTC at 8."
+    }
+  ],
+  "_excluded": [
+    {
+      "symbol": "LBTC",
+      "reason": "LBTC/USD exists but aggregates only 2 sources, below the handler's hardcoded minimum of 3. A handler for it would revert on every dispatch, so it is not registered."
+    }
+  ],
+  "deployed": {
+    "handlerClassHash": "0x45e703629514cf9eb595ecaa9b5e1ad94c50b4d54715b3cd23239c53691c25a",
+    "factory": "0x1305500d86af0788a78fed2816de445efb64212b4ea651efca1f02142ae209c"
+  }
+}

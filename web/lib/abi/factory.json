@@ -1,0 +1,371 @@
+[
+  {
+    "type": "impl",
+    "name": "Factory",
+    "interface_name": "unwrap_staking::factory::IHandlerFactory"
+  },
+  {
+    "type": "struct",
+    "name": "unwrap_staking::factory::TokenConfig",
+    "members": [
+      {
+        "name": "token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "decimals",
+        "type": "core::integer::u8"
+      },
+      {
+        "name": "pair",
+        "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "unwrap_staking::factory::Subscription",
+    "members": [
+      {
+        "name": "handler",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "pool",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "pool_member",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "payout",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "out_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      }
+    ]
+  },
+  {
+    "type": "enum",
+    "name": "core::bool",
+    "variants": [
+      {
+        "name": "False",
+        "type": "()"
+      },
+      {
+        "name": "True",
+        "type": "()"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "unwrap_staking::factory::IHandlerFactory",
+    "items": [
+      {
+        "type": "function",
+        "name": "deploy_handler",
+        "inputs": [
+          {
+            "name": "pool",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "pool_member",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "payout",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "out_token",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "handler_address",
+        "inputs": [
+          {
+            "name": "pool",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "pool_member",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "payout",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "out_token",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "handler_class_hash",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::class_hash::ClassHash"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "reward_token",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "oracle",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "router",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "max_slippage_bps",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u16"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "token_config",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "unwrap_staking::factory::TokenConfig"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "supported_tokens",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::array::Array::<unwrap_staking::factory::TokenConfig>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "subscriptions_count",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "subscription_at",
+        "inputs": [
+          {
+            "name": "index",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "unwrap_staking::factory::Subscription"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "subscriptions",
+        "inputs": [
+          {
+            "name": "start",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "limit",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Array::<unwrap_staking::factory::Subscription>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "subscriptions_of",
+        "inputs": [
+          {
+            "name": "pool_member",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Array::<unwrap_staking::factory::Subscription>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "is_handler",
+        "inputs": [
+          {
+            "name": "handler",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [
+      {
+        "name": "handler_class_hash",
+        "type": "core::starknet::class_hash::ClassHash"
+      },
+      {
+        "name": "strk",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "strk_decimals",
+        "type": "core::integer::u8"
+      },
+      {
+        "name": "pair_in",
+        "type": "core::felt252"
+      },
+      {
+        "name": "oracle",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "router",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "tokens",
+        "type": "core::array::Array::<unwrap_staking::factory::TokenConfig>"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::factory::HandlerFactory::HandlerDeployed",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "pool_member",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "pool",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "handler",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "payout",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "out_token",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "index",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "unwrap_staking::factory::HandlerFactory::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "HandlerDeployed",
+        "type": "unwrap_staking::factory::HandlerFactory::HandlerDeployed",
+        "kind": "nested"
+      }
+    ]
+  }
+]
