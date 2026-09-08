@@ -25,11 +25,11 @@ const STAKING_COMMIT = "5c11a5689f2d2e08ffecebf30d3e49569accbfca";
 
 function auditPrompt(): string {
   const lines = [
-    "I am considering delegating STRK or Bitcoin to a Starknet validator that offers automated reward claiming. Audit their smart contracts and explain the real risks to me in plain English. I am not a Cairo developer.",
+    "I am considering delegating STRK or Bitcoin to a Starknet validator that offers automated reward claiming. Audit their contracts and explain the real risks in plain English. I am not a Cairo developer.",
     "",
     "## The code to audit",
     `Their repo: ${LINKS.repo}`,
-    "The two contracts are contracts/src/handler.cairo (the per-user rewards receiver) and contracts/src/factory.cairo (which deploys them).",
+    "Contracts: contracts/src/handler.cairo (the per-user rewards receiver) and contracts/src/factory.cairo (which deploys them).",
   ];
 
   if (config.deployed.handlerClassHash) {
@@ -42,11 +42,19 @@ function auditPrompt(): string {
   lines.push(
     "",
     "## Upstream code it depends on — please actually read these before judging",
-    `1. Starknet staking (the delegation pool). Read it at the commit their interfaces were transcribed from: https://github.com/starkware-libs/starknet-staking/tree/${STAKING_COMMIT} — especially src/pool/pool.cairo and src/pool/interface.cairo. Confirm who is allowed to call claim_rewards, change_reward_address and the exit functions.`,
-    "2. AVNU (the DEX router used for swaps): https://github.com/orgs/avnu-labs/repositories — the exchange is in avnu-contracts-v2, src/exchange.cairo.",
-    "3. Pragma (the price oracle): https://docs.pragma.build — how get_data_median works, and what num_sources_aggregated and last_updated_timestamp mean.",
+    `1. Starknet staking pool, at the commit their interfaces came from: https://github.com/starkware-libs/starknet-staking/tree/${STAKING_COMMIT} (src/pool/pool.cairo, src/pool/interface.cairo). Confirm who may call claim_rewards, change_reward_address and the exit functions.`,
+    "2. AVNU, the DEX router: https://github.com/orgs/avnu-labs/repositories (avnu-contracts-v2, src/exchange.cairo).",
+    "3. Pragma, the oracle: https://docs.pragma.build — get_data_median, num_sources_aggregated, last_updated_timestamp.",
     "",
-    "Important: base your conclusions on what those upstream contracts actually do, not on what a contract with that name might do. If you cannot verify something, say so explicitly rather than assuming the worst case — an unverified guess presented as a risk is worse than no answer.",
+    "Context, so you can size upstream risk rather than assume it: Starknet staking is built and run by StarkWare; AVNU is the most used DEX aggregator on Starknet; Pragma is a primary oracle provider there. That makes none of them infallible and should not soften your findings — it is only for weighting a hypothetical failure against how this is actually deployed.",
+    "",
+    "Scope: mainly whether the Unwrap Labs automation contracts can be trusted, not whether Starknet, AVNU or Pragma might fail. Where upstream failure matters, tell me what their contracts do in response.",
+    "",
+    "Two things to check rather than assume, since they decide whether upstream failure can cost me money:",
+    "- AVNU pays proceeds only to the beneficiary passed in, and asserts beneficiary == caller. So the receiver passes itself, then forwards to the immutable payout. Confirm proceeds cannot reach a third party.",
+    "- Either failure alone is a no-op, not a loss. Stale, thin or absent Pragma price: the receiver reverts, rewards stay put. Pragma healthy but liquidity poor: the swap misses the floor and reverts. Losing money would need the oracle actively wrong in the right direction AND poor liquidity at the same moment. Check that this holds in the code.",
+    "",
+    "Base conclusions on what the upstream contracts actually do, not what a contract of that name might do. If you cannot verify something, say so rather than assuming the worst case — an unverified guess presented as a risk is worse than no answer.",
     "",
     "## The claims to check",
     "They say the receiver contract:",
@@ -58,9 +66,12 @@ function auditPrompt(): string {
     "6. has one restricted entrypoint, escape(), callable only by me, which returns the rewards as STRK without swapping.",
     "",
     "## What I want from you",
-    "For each claim: true, false, or true-with-caveats, and quote the specific lines that decide it.",
-    "Then look for what they have not claimed: any path where the operator or an arbitrary caller extracts value; anything that could redirect the payout; a way to bypass the oracle floor; griefing that costs me money rather than just delaying me; and what breaks if Pragma stops publishing, if the router misbehaves, or if the staking pool is upgraded.",
-    "Finally: in one paragraph, what is the worst thing that can realistically happen to my funds, and how likely is it? Distinguish clearly between 'I could lose money' and 'I could be inconvenienced'.",
+    "Check each claim against the code.",
+    "Then look for what they have not claimed: any path where the operator or an arbitrary caller extracts value; anything that could redirect the payout; a way to bypass the oracle floor; griefing that costs money rather than just delaying me; and what breaks if the staking pool is upgraded.",
+    "",
+    "## How to answer",
+    "Return ONLY a short plain-English summary — a verdict on whether these contracts are safe to opt into, the worst thing that can realistically happen to my funds, and whether that is 'I could lose money' or 'I could be inconvenienced'. A few sentences.",
+    "Do NOT give me a claim-by-claim or issue-by-issue breakdown unless I ask for one in a follow-up. Do the full analysis internally and tell me the conclusion. If something is genuinely serious, lead with that instead.",
   );
 
   return lines.join("\n");

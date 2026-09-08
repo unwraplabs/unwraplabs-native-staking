@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "@starknet-react/core";
 import { useDelegator } from "@/hooks/useDelegator";
+import { fetchHoldings, type Holdings } from "@/lib/holdings";
 import { fetchPrices, type Prices } from "@/lib/prices";
 import { sortPositions } from "@/lib/positions";
+import { sameAddress } from "@/lib/format";
 import type { ValidatorStats } from "@/lib/endur";
 import { History } from "./History";
 import { PositionCard } from "./PositionCard";
@@ -12,6 +14,7 @@ import { ReceiverCard } from "./ReceiverCard";
 import { StrandedBanner } from "./StrandedBanner";
 import { SubscribeDialog } from "./SubscribeDialog";
 import { SwitchDialog } from "./SwitchDialog";
+import { HoldingsCard } from "./HoldingsCard";
 import { PositionSkeleton, RailSkeleton } from "./Skeleton";
 import { TrustStrip } from "./TrustStrip";
 
@@ -39,11 +42,50 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
   const [prices, setPrices] = useState<Prices>({ strk: null, btc: null });
   const [notice, setNotice] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<Holdings | null>(null);
+  const [others, setOthers] = useState<Array<{ label: string; holdings: Holdings }>>([]);
   const [switching, setSwitching] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchPrices().then(setPrices);
   }, []);
+
+  useEffect(() => {
+    if (!address) return;
+    void fetchHoldings(address).then(setWallet);
+  }, [address]);
+
+  // Any address that will receive rewards but is not the wallet in front of the
+  // delegator. A receiver contract is excluded — its balance is transient and
+  // already reported on its own card, so listing it here would read as money
+  // sitting somewhere unexpected.
+  useEffect(() => {
+    if (!address) return;
+    const handlers = new Set(subscriptions.map((s) => BigInt(s.handler).toString()));
+    const candidates = new Map<string, string>();
+
+    for (const p of positions) {
+      if (!p.member || !p.rewardAddress) continue;
+      if (sameAddress(p.rewardAddress, address)) continue;
+      if (handlers.has(BigInt(p.rewardAddress).toString())) continue;
+      candidates.set(BigInt(p.rewardAddress).toString(), p.rewardAddress);
+    }
+    for (const sub of subscriptions) {
+      if (sameAddress(sub.payout, address)) continue;
+      candidates.set(BigInt(sub.payout).toString(), sub.payout);
+    }
+
+    if (candidates.size === 0) {
+      setOthers([]);
+      return;
+    }
+    void Promise.all(
+      [...candidates.values()].map(async (addr) => ({
+        label: "Rewards paid to",
+        holdings: await fetchHoldings(addr),
+      })),
+    ).then(setOthers);
+  }, [address, positions, subscriptions]);
 
   const guard = (fn: () => Promise<unknown>) => async () => {
     setNotice(null);
@@ -140,6 +182,8 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
         </div>
 
         <aside className="space-y-5">
+          <HoldingsCard wallet={wallet} others={others} prices={prices} />
+
           {loadingSubscriptions && subscriptions.length === 0 ? (
             <RailSkeleton />
           ) : subscriptions.length === 0 ? (
