@@ -343,8 +343,21 @@ nothing can be stale.
 
 ### Vercel
 
-Set the project's **Root Directory** to `web`. The build scripts reach back to
-`config/` at the repo root, which Vercel checks out in full.
+Set the project's **Root Directory** to `web`.
+
+`vercel.json` lives in `web/`, not at the repo root, because Vercel reads it
+from the Root Directory — at the repo root it would be silently ignored and the
+cron would never register. If you ever change the Root Directory, move it too.
+
+Reaching outside the Root Directory is fine: Vercel clones the whole repository
+and only changes the working directory, so the `web/lib/chain.config.json`
+symlink resolves to `config/mainnet.json` at build time. The JSON is inlined
+into the bundle, so nothing outside `web/` is needed at runtime.
+
+Lock files are committed for all three packages (`web/`, `scripts/`,
+`contracts/`), so installs are reproducible — which matters here, since the
+peer constraints between starknet-react, starknetkit and starknet only resolve
+at specific versions.
 
 ---
 
