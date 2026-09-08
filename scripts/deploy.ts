@@ -42,7 +42,11 @@ type Config = {
   oracle: string;
   router: string;
   outTokens: TokenConfig[];
-  deployed: { handlerClassHash: string | null; factory: string | null };
+  deployed: {
+    handlerClassHash: string | null;
+    factory: string | null;
+    deployedAtBlock?: number | null;
+  };
 };
 
 function loadConfig(): Config {
@@ -108,6 +112,13 @@ async function main() {
     return;
   }
 
+  // Captured before anything is sent, so it is guaranteed to be at or before
+  // the deploy block. Used as the floor for event scans: without it the app
+  // walks the chain from genesis, which costs ~100 seconds of empty pages per
+  // receiver on mainnet.
+  const blockAtStart = await config.provider.getBlockNumber();
+  console.log(`block    : ${blockAtStart} (event-scan floor)\n`);
+
   const accountKey = process.env.DEPLOY_ACCOUNT || "unwrap-deployer";
   const account = Deployer.getAccount(
     accountKey,
@@ -155,7 +166,7 @@ async function main() {
     account,
   );
   console.log(`\n    factory: ${deployed.contract_address}`);
-  saveConfig({ factory: deployed.contract_address });
+  saveConfig({ factory: deployed.contract_address, deployedAtBlock: blockAtStart });
 
   console.log("\nRecorded in web/config/mainnet.json. Next:");
   console.log("  scripts/verify-class-hash.sh    confirm the deployed class is this source");

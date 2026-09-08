@@ -337,6 +337,15 @@ so that one delegator's bad swap route cannot revert everyone else's claim. It
 logs one JSON object per line, tagged with a run id, so a question about a
 specific delegator on a specific week is answerable with `grep`.
 
+Event scans start from `deployed.deployedAtBlock` in the config, which the
+deploy script records. This is not a micro-optimisation: scanning from genesis
+made the RPC walk the chain in ~82k-block chunks, returning an empty page with
+a continuation token for each, so a receiver with no events took 178 requests
+and 103 seconds to report nothing. From the factory's block it is one request
+and about half a second. No receiver can predate its factory, so that block is
+a sound floor; if it is ever missing, the app finds it by binary search rather
+than falling back to zero.
+
 There is deliberately **no indexer and no database**. The factory's index is the
 candidate list and the pool's reward address is the truth; nothing is cached, so
 nothing can be stale.

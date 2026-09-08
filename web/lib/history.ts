@@ -6,6 +6,7 @@
  * This is the payoff of the per-user instance design.
  */
 import { hash, num } from "starknet";
+import { config } from "./config";
 import { normalizeAddress } from "./format";
 import { provider } from "./starknet";
 
@@ -31,14 +32,63 @@ const u256 = (low: string, high: string): bigint =>
   BigInt(num.toHex(low)) + (BigInt(num.toHex(high)) << 128n);
 
 /**
+ * The block to start event scans from.
+ *
+ * Scanning from genesis is not merely slow, it is unusable: the RPC walks in
+ * ~82k-block chunks and returns an empty page with a continuation token for
+ * each one, so a receiver with no events took 178 requests and 103 seconds to
+ * report nothing. From the factory's deployment block it is a single request.
+ *
+ * No receiver can predate the factory that deploys it, so that block is a
+ * sound floor. It is normally read from config, where the deploy script writes
+ * it. When it is missing we find it by binary search over `getClassHashAt`
+ * rather than falling back to zero — about two dozen requests, once per
+ * session, instead of silently reintroducing the stall.
+ */
+let cachedFromBlock: Promise<number> | null = null;
+
+export function historyFromBlock(): Promise<number> {
+  if (cachedFromBlock) return cachedFromBlock;
+
+  const configured = config.deployed.deployedAtBlock;
+  if (typeof configured === "number" && configured > 0) {
+    cachedFromBlock = Promise.resolve(configured);
+    return cachedFromBlock;
+  }
+
+  cachedFromBlock = (async () => {
+    const factory = config.deployed.factory;
+    if (!factory) return 0;
+    const p = provider();
+    try {
+      let lo = 0;
+      let hi = await p.getBlockNumber();
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        try {
+          await p.getClassHashAt(mid, factory);
+          hi = mid;
+        } catch {
+          lo = mid + 1;
+        }
+      }
+      return lo;
+    } catch {
+      return 0;
+    }
+  })();
+  return cachedFromBlock;
+}
+
+/**
  * Every event this handler has emitted, newest first.
  *
- * `fromBlock` defaults to 0 because handlers are young and sparse; if that ever
- * gets slow, pass the deployment block. The RPC paginates via
- * `continuation_token`, which is followed to the end so nothing is silently
- * truncated — a partial history shown as complete would be worse than none.
+ * The RPC paginates via `continuation_token`, which is followed to the end so
+ * nothing is silently truncated — a partial history shown as complete would be
+ * worse than none.
  */
-export async function fetchHistory(handler: string, fromBlock = 0): Promise<HistoryEntry[]> {
+export async function fetchHistory(handler: string, fromBlock?: number): Promise<HistoryEntry[]> {
+  const from = fromBlock ?? (await historyFromBlock());
   const p = provider();
   const entries: HistoryEntry[] = [];
   let continuation: string | undefined;
@@ -46,7 +96,7 @@ export async function fetchHistory(handler: string, fromBlock = 0): Promise<Hist
   do {
     const page = await p.getEvents({
       address: handler,
-      from_block: { block_number: fromBlock },
+      from_block: { block_number: from },
       to_block: "latest",
       chunk_size: 100,
       continuation_token: continuation,

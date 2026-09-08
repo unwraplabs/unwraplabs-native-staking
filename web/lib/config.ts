@@ -26,7 +26,12 @@ export type ChainConfig = {
   oracle: string;
   router: string;
   outTokens: OutToken[];
-  deployed: { handlerClassHash: string | null; factory: string | null };
+  deployed: {
+    handlerClassHash: string | null;
+    factory: string | null;
+    /** Floor for event scans — see `historyFromBlock` in lib/history.ts. */
+    deployedAtBlock?: number | null;
+  };
 };
 
 export const config = raw as unknown as ChainConfig;

@@ -9,7 +9,7 @@
   },
   "oracle": "0x2a85bd616f912537c50a49a4076db02c00b29b2cdc8a197ce92ed1837fa875b",
   "router": "0x4270219d365d6b017231b52e92b3fb5d7c8378b05e9abc97724537a80e93b0f",
-  "_pairs": "Every non-STRK asset is priced off WBTC/USD: it is the only BTC feed on Pragma with its own dedicated, well-sourced median (8 sources). Run scripts/verify-feeds.mjs before any deploy — the handler refuses a feed with fewer than 3 aggregated sources, so a thinning feed disables swaps rather than degrading them.",
+  "_pairs": "Every non-STRK asset is priced off WBTC/USD: it is the only BTC feed on Pragma with its own dedicated, well-sourced median (8 sources). Run scripts/verify-feeds.mjs before any deploy \u2014 the handler refuses a feed with fewer than 3 aggregated sources, so a thinning feed disables swaps rather than degrading them.",
   "outTokens": [
     {
       "symbol": "WBTC",
@@ -41,6 +41,8 @@
   ],
   "deployed": {
     "handlerClassHash": "0x45e703629514cf9eb595ecaa9b5e1ad94c50b4d54715b3cd23239c53691c25a",
-    "factory": "0x1305500d86af0788a78fed2816de445efb64212b4ea651efca1f02142ae209c"
+    "factory": "0x1305500d86af0788a78fed2816de445efb64212b4ea651efca1f02142ae209c",
+    "deployedAtBlock": 14570883,
+    "_deployedAtBlock": "Block at or before which the factory was deployed. Used as the floor for event scans: no receiver can predate its factory, and scanning from genesis costs ~100s of empty pages on mainnet. Written automatically by scripts/deploy.ts."
   }
 }
