@@ -81,39 +81,90 @@ export function historyFromBlock(): Promise<number> {
 }
 
 /**
- * Every event this handler has emitted, newest first.
+ * The node advances a fixed 81,920 blocks per `getEvents` call.
  *
- * The RPC paginates via `continuation_token`, which is followed to the end so
- * nothing is silently truncated — a partial history shown as complete would be
- * worse than none.
+ * Measured, not assumed: every `chunk_size` from 10 to 1024 returns a
+ * continuation token exactly 81,920 blocks further on, and anything near 10,000
+ * is rejected outright. `chunk_size` bounds events per page, not the block span.
+ *
+ * That matters because following continuation tokens is serial — one round trip
+ * per window, in order. Since the step is fixed and known, the windows can be
+ * computed up front and fetched at the same time instead.
  */
-export async function fetchHistory(handler: string, fromBlock?: number): Promise<HistoryEntry[]> {
-  const from = fromBlock ?? (await historyFromBlock());
+const BLOCK_WINDOW = 81_920;
+const MAX_CONCURRENCY = 10;
+const CHUNK_SIZE = 1000;
+
+async function fetchWindow(handler: string, from: number, to: number) {
   const p = provider();
-  const entries: HistoryEntry[] = [];
+  const events: Array<{ keys: string[]; data: string[]; transaction_hash: string; block_number?: number }> = [];
   let continuation: string | undefined;
 
+  // A single window can still overflow `chunk_size` if it is busy, so its own
+  // pagination is followed to the end. In practice that is one call.
   do {
     const page = await p.getEvents({
       address: handler,
       from_block: { block_number: from },
-      to_block: "latest",
-      chunk_size: 100,
+      to_block: { block_number: to },
+      chunk_size: CHUNK_SIZE,
       continuation_token: continuation,
     });
+    events.push(...(page.events as never[]));
+    continuation = page.continuation_token;
+  } while (continuation);
 
-    for (const e of page.events) {
+  return events;
+}
+
+/** Runs `tasks` with a cap, so a long scan does not open hundreds of sockets. */
+async function pooled<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      results[i] = await tasks[i]();
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Every event this handler has emitted, oldest first.
+ *
+ * Windows are fetched concurrently rather than by walking continuation tokens,
+ * so the cost is roughly the slowest window instead of the sum of all of them.
+ * Nothing is sampled or truncated: the windows tile the whole range, and each
+ * one is drained.
+ */
+export async function fetchHistory(handler: string, fromBlock?: number): Promise<HistoryEntry[]> {
+  const p = provider();
+  const [from, head] = await Promise.all([
+    fromBlock !== undefined ? Promise.resolve(fromBlock) : historyFromBlock(),
+    p.getBlockNumber(),
+  ]);
+
+  const windows: Array<[number, number]> = [];
+  for (let start = from; start <= head; start += BLOCK_WINDOW) {
+    windows.push([start, Math.min(start + BLOCK_WINDOW - 1, head)]);
+  }
+
+  const pages = await pooled(
+    windows.map(([a, b]) => () => fetchWindow(handler, a, b)),
+    MAX_CONCURRENCY,
+  );
+
+  const entries: HistoryEntry[] = [];
+  for (const page of pages) {
+    for (const e of page) {
       const selector = e.keys[0];
-      const blockNumber = (e as { block_number?: number }).block_number ?? 0;
+      const blockNumber = e.block_number ?? 0;
       const txHash = e.transaction_hash;
 
       if (selector === KEYS.claimed) {
-        entries.push({
-          kind: "claimed",
-          txHash,
-          blockNumber,
-          amountIn: u256(e.data[0], e.data[1]),
-        });
+        entries.push({ kind: "claimed", txHash, blockNumber, amountIn: u256(e.data[0], e.data[1]) });
       } else if (selector === KEYS.dispatched) {
         // `token_out` is a keyed field, so it rides in keys[1], not data.
         entries.push({
@@ -134,11 +185,10 @@ export async function fetchHistory(handler: string, fromBlock?: number): Promise
         });
       }
     }
+  }
 
-    continuation = page.continuation_token;
-  } while (continuation);
-
-  return entries.reverse();
+  // Windows are fetched out of order, so sort rather than relying on arrival.
+  return entries.sort((a, b) => a.blockNumber - b.blockNumber);
 }
 
 /**

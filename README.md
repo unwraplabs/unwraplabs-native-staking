@@ -337,14 +337,35 @@ so that one delegator's bad swap route cannot revert everyone else's claim. It
 logs one JSON object per line, tagged with a run id, so a question about a
 specific delegator on a specific week is answerable with `grep`.
 
-Event scans start from `deployed.deployedAtBlock` in the config, which the
-deploy script records. This is not a micro-optimisation: scanning from genesis
-made the RPC walk the chain in ~82k-block chunks, returning an empty page with
-a continuation token for each, so a receiver with no events took 178 requests
-and 103 seconds to report nothing. From the factory's block it is one request
-and about half a second. No receiver can predate its factory, so that block is
-a sound floor; if it is ever missing, the app finds it by binary search rather
-than falling back to zero.
+### Reading receiver activity
+
+Lifetime totals come from each receiver's events, because nothing on chain
+aggregates them — `held()` is a current balance and `config()` is static.
+
+`starknet_getEvents` paginates by **block range, not by results**: the node
+scans a fixed 81,920 blocks per request and returns a continuation token for
+the next slice whether or not anything matched. The token is literally
+`<next block>-<event index>`. So the request count is
+`ceil(range / 81_920)` regardless of how many events exist — a receiver with
+zero events needed 178 requests and 103 seconds when scanned from genesis.
+`chunk_size` does not change this (every value from 10 to 1024 advances the
+same 81,920 blocks), and it is not provider-specific — two independent RPCs
+step identically, since 81,920 is the Juno/Pathfinder default.
+
+Two things follow, and both are implemented:
+
+- Scans start at `deployed.deployedAtBlock`, recorded by the deploy script. No
+  receiver can predate its factory, so it is a sound floor. If it is ever
+  missing the app finds it by binary search rather than falling back to zero.
+- Windows are computed up front and fetched concurrently instead of walking
+  continuation tokens one at a time, which is inherently serial. Measured on
+  the full-chain range: 99.1s serial versus 11.7s concurrent.
+
+Today that is one window and about 400ms. It still grows with the chain —
+Starknet produces ~51,000 blocks a day, so roughly one extra window every 1.6
+days. The durable fix is cumulative counters in the handler, turning the scan
+into a single view call; that needs a new class hash and factory, so it is a
+deliberate decision rather than something to slip in.
 
 There is deliberately **no indexer and no database**. The factory's index is the
 candidate list and the pool's reward address is the truth; nothing is cached, so
