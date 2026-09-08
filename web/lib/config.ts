@@ -1,10 +1,14 @@
-import raw from "./chain.config.json";
+import raw from "../config/mainnet.json";
 
 /**
- * Chain configuration, generated from `config/mainnet.json` at the repo root by
- * `scripts/sync-config.mjs`. Do not edit `chain.config.json` directly — edit the
- * root file, which the deploy scripts also read, so the app and the contracts
- * can never disagree about an address.
+ * Chain configuration — the single source of truth for every address, shared by
+ * the app and the deploy scripts so the two can never disagree.
+ *
+ * It lives inside `web/` deliberately. Vercel builds with only the project's
+ * Root Directory available unless "Include files outside the root directory" is
+ * enabled, so anything the app imports has to be reachable without leaving
+ * `web/`. It used to sit at the repo root behind a symlink, which broke the
+ * build with a message that never mentioned the config at all.
  */
 export type OutToken = {
   symbol: string;

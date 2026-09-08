@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const cfg = JSON.parse(readFileSync(join(root, "config/mainnet.json"), "utf8"));
+const cfg = JSON.parse(readFileSync(join(root, "web/config/mainnet.json"), "utf8"));
 
 const MIN_SOURCES = 3;
 const MAX_AGE = 3600;

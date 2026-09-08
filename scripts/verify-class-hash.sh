@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CONFIG=config/mainnet.json
+CONFIG=web/config/mainnet.json
 RPC=$(python3 -c "import json;print(json.load(open('$CONFIG'))['rpc'])")
 DEPLOYED=$(python3 -c "import json;print(json.load(open('$CONFIG'))['deployed']['handlerClassHash'] or '')")
 

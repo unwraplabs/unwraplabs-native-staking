@@ -201,7 +201,7 @@ scripts/verify-class-hash.sh
 ```
 
 It recompiles `RewardsHandler` from source, prints the resulting class hash next
-to the one recorded in `config/mainnet.json`, and confirms that class is declared
+to the one recorded in `web/config/mainnet.json`, and confirms that class is declared
 on chain. If they differ, the deployed receiver is not this source — do not opt
 in.
 
@@ -238,7 +238,7 @@ size of that gap. A wrapper trading *above* WBTC makes the floor too high and th
 swap simply reverts, which is the safe direction; one trading *below* widens the
 1% bound by the discount. The bound stays finite either way, capped by the
 wrapper's deviation. If these tokens attract real volume, list dedicated feeds on
-Pragma and update `config/mainnet.json`.
+Pragma and update `web/config/mainnet.json`.
 
 `tBTC` and `LBTC` pools are offered without auto-swap: rewards are paid through
 as STRK rather than priced against a feed we do not trust.
@@ -269,7 +269,7 @@ npm install
 npm run dev
 ```
 
-`web/lib/chain.config.json` is a **symlink** to `config/mainnet.json`, so there
+`web/lib/chain.config.json` is a **symlink** to `web/config/mainnet.json`, so there
 is exactly one copy of the addresses and it cannot go stale — edit the root file
 and the app sees it immediately, running dev server included. (It used to be a
 generated copy refreshed by a prebuild step, which silently went stale whenever
@@ -305,7 +305,7 @@ as well as the Sierra.
 
 The account key defaults to `unwrap-deployer`; override with `DEPLOY_ACCOUNT`,
 and the store file with `ACCOUNTS_FILE_NAME`. The script writes the resulting
-class hash and factory address straight back into `config/mainnet.json`, so the
+class hash and factory address straight back into `web/config/mainnet.json`, so the
 app and the keeper pick them up with no retyping.
 
 Then run `scripts/verify-class-hash.sh`.
@@ -351,7 +351,7 @@ cron would never register. If you ever change the Root Directory, move it too.
 
 Reaching outside the Root Directory is fine: Vercel clones the whole repository
 and only changes the working directory, so the `web/lib/chain.config.json`
-symlink resolves to `config/mainnet.json` at build time. The JSON is inlined
+symlink resolves to `web/config/mainnet.json` at build time. The JSON is inlined
 into the bundle, so nothing outside `web/` is needed at runtime.
 
 Lock files are committed for all three packages (`web/`, `scripts/`,
@@ -394,6 +394,6 @@ against responses captured from the live pool.
 
 ## Status
 
-The contracts are **unaudited**. The factory address in `config/mainnet.json` is
+The contracts are **unaudited**. The factory address in `web/config/mainnet.json` is
 unset until deployment; until then the app renders the landing page and the
 keeper exits cleanly with nothing to do.

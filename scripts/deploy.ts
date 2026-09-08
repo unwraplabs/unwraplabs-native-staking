@@ -12,7 +12,7 @@
  * Optional environment:
  *   DEPLOY_ACCOUNT       account key in the store       (default: "unwrap-deployer")
  *   ACCOUNTS_FILE_NAME   store file                     (default: the SDK's)
- *   RPC_URL              node to use                    (default: config/mainnet.json)
+ *   RPC_URL              node to use                (default: web/config/mainnet.json)
  *
  * The factory is deployed once and never changed. To alter receiver code or add
  * an out-token you deploy a NEW factory: existing receivers keep working,
@@ -31,7 +31,7 @@ config();
 // than `import.meta.url`.
 const ROOT = join(__dirname, "..");
 const CONTRACTS = join(ROOT, "contracts");
-const CONFIG = join(ROOT, "config/mainnet.json");
+const CONFIG = join(ROOT, "web/config/mainnet.json");
 const PACKAGE = "unwrap_staking";
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -157,7 +157,7 @@ async function main() {
   console.log(`\n    factory: ${deployed.contract_address}`);
   saveConfig({ factory: deployed.contract_address });
 
-  console.log("\nRecorded in config/mainnet.json. Next:");
+  console.log("\nRecorded in web/config/mainnet.json. Next:");
   console.log("  scripts/verify-class-hash.sh    confirm the deployed class is this source");
   console.log("  node scripts/verify-feeds.mjs   confirm every Pragma feed still qualifies");
 }
