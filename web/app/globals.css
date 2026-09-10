@@ -13,6 +13,19 @@
   --color-live: #16a34a;
   --color-btc: #e8730c;
 
+  /* Position-card palette (zinc), deliberately separate from the ink/line
+     tokens above. The card design is transcribed from `Staking Cards.dc.html`,
+     which is built on zinc; the rest of the app is not. Folding the two
+     together would have shifted the landing page, header and dialogs to match
+     a decision that was only ever made about the cards. */
+  --color-card-ink: #18181b;
+  --color-card-mute: #71717a;
+  --color-card-dim: #a1a1aa;
+  --color-card-line: #e4e4e7;
+  --color-card-hair: #f0f0f1;
+  --color-card-tint: #f4f4f5;
+  --color-card-edge: #d4d4d8;
+
   --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
 }

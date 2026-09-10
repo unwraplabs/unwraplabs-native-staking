@@ -13,34 +13,52 @@ function Bar({ w, h = 12 }: { w: string; h?: number }) {
   );
 }
 
-/** Mirrors PositionCard's header, figures and action row. */
+/** Mirrors PositionCard's shell, figures, auto-claim row and action stack. */
 export function PositionSkeleton() {
   return (
-    <div className="min-w-0 border-t border-line py-6" aria-hidden>
-      <div className="mb-4 flex items-center gap-3">
-        <span className="h-[26px] w-[26px] animate-pulse rounded-full bg-line-2" />
-        <Bar w="70px" h={16} />
+    <div
+      className="flex min-w-0 flex-col gap-[26px] rounded-lg border border-card-line bg-white p-7"
+      aria-hidden
+    >
+      <div className="flex items-center gap-3">
+        <span className="h-[30px] w-[30px] animate-pulse rounded-full bg-line-2" />
+        <Bar w="70px" h={18} />
         <span className="ml-auto">
           <Bar w="76px" />
         </span>
       </div>
-      <div className="flex flex-wrap gap-x-8 gap-y-5">
+
+      <div className="grid grid-cols-2 gap-7">
         <div className="space-y-2">
           <Bar w="46px" />
-          <Bar w="140px" h={24} />
+          <Bar w="140px" h={32} />
           <Bar w="58px" />
         </div>
         <div className="space-y-2">
           <Bar w="112px" />
-          <Bar w="110px" h={24} />
+          <Bar w="110px" h={32} />
           <Bar w="86px" />
         </div>
       </div>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Bar w="104px" h={36} />
-        <Bar w="112px" h={36} />
-        <Bar w="132px" h={36} />
-        <Bar w="122px" h={36} />
+
+      <div className="flex items-center gap-3 border-t border-card-hair pt-[22px]">
+        <span className="h-5 w-9 animate-pulse rounded-full bg-line-2" />
+        <Bar w="104px" h={14} />
+      </div>
+
+      <div className="mt-auto flex flex-col gap-4">
+        <Bar w="100%" h={44} />
+        <div className="grid grid-cols-2 gap-2.5">
+          <Bar w="100%" h={38} />
+          <Bar w="100%" h={38} />
+          <span className="col-span-2">
+            <Bar w="100%" h={38} />
+          </span>
+        </div>
+      </div>
+
+      <div className="border-t border-card-hair pt-4">
+        <Bar w="58px" />
       </div>
     </div>
   );
@@ -49,7 +67,7 @@ export function PositionSkeleton() {
 /** Shown inside a card while its receiver's event log is still being read. */
 export function ActivitySkeleton() {
   return (
-    <div className="mt-5 border border-line p-3" aria-hidden>
+    <div className="flex flex-col gap-3" aria-hidden>
       <Bar w="128px" />
       <div className="mt-3 flex gap-10">
         <div className="space-y-2">

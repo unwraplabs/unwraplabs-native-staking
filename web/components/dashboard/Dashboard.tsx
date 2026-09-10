@@ -127,7 +127,7 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
               showing that shape immediately makes the wait feel like loading
               rather than like nothing happening. */}
           {loadingPositions && positions.length === 0 ? (
-            <div className="grid grid-cols-1 gap-x-10 xl:grid-cols-2">
+            <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
               <PositionSkeleton />
               <PositionSkeleton />
             </div>
@@ -152,7 +152,7 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-x-10 xl:grid-cols-2">
+          <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
           {mine.map((p) => (
             <PositionCard
               key={p.symbol}
