@@ -34,6 +34,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Every numeral on this page is mono and tabular, so figures line up in
    columns and do not jitter as live values update. */
 .mono,
