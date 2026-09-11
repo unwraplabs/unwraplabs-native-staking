@@ -68,6 +68,10 @@ export type PoolInfo = {
    * rewards are forwarded as STRK with no swap.
    */
   payoutToken: string | null;
+  // TODO: check all the icons. SolvBTC is hotlinked from Endur for now
+  // (dashboard.endur.fi/tokens/solvbtc.svg) — decide whether to move it into
+  // `public/tokens/` like the others, which is what `TokenIcon` assumes. The
+  // other three have not been compared against a source.
   icon: string;
 };
 
@@ -88,7 +92,7 @@ export const POOLS: PoolInfo[] = [
     pool: "0x03aa1804ffa96794fe8ce85f338496db222b5cf7d391959df0179b91e2ab1c17",
     kind: "btc",
     payoutToken: "0x0593e034dda23eea82d2ba9a30960ed42cf4a01502cc2351dc9b9881f9931a68",
-    icon: "/tokens/solvbtc.png",
+    icon: "https://dashboard.endur.fi/tokens/solvbtc.svg",
   },
   {
     symbol: "strkBTC",
