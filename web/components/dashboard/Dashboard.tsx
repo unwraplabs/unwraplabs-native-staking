@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "@starknet-react/core";
 import { useDelegator } from "@/hooks/useDelegator";
+import { describeTxError } from "@/lib/errors";
 import { fetchHoldings, type Holdings } from "@/lib/holdings";
 import { fetchPrices, type Prices } from "@/lib/prices";
 import { sortPositions } from "@/lib/positions";
@@ -14,6 +15,7 @@ import { ReceiverCard } from "./ReceiverCard";
 import { StrandedBanner } from "./StrandedBanner";
 import { SubscribeDialog } from "./SubscribeDialog";
 import { SwitchDialog } from "./SwitchDialog";
+import { Toaster, useToasts } from "@/components/Toaster";
 import { HoldingsCard } from "./HoldingsCard";
 import { PositionSkeleton, RailSkeleton } from "./Skeleton";
 import { TrustStrip } from "./TrustStrip";
@@ -40,7 +42,7 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
     subscriptionFor,
   } = useDelegator();
   const [prices, setPrices] = useState<Prices>({ strk: null, btc: null });
-  const [notice, setNotice] = useState<string | null>(null);
+  const { toasts, push, dismiss } = useToasts();
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [wallet, setWallet] = useState<Holdings | null>(null);
   const [others, setOthers] = useState<Array<{ label: string; holdings: Holdings }>>([]);
@@ -87,12 +89,15 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
     ).then(setOthers);
   }, [address, positions, subscriptions]);
 
+  // Every action runs through this. A failure — or the delegator declining in
+  // their wallet — surfaces as a toast rather than a banner above the cards,
+  // which pushed the whole page down to report something already over.
   const guard = (fn: () => Promise<unknown>) => async () => {
-    setNotice(null);
     try {
       await fn();
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "transaction failed");
+      const { kind, text } = describeTxError(e);
+      push(kind, text);
     }
   };
 
@@ -116,12 +121,6 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
             onEscape={(s) => void guard(() => escape(s))()}
             busy={busy}
           />
-
-          {notice ? (
-            <div className="mb-5 border border-line bg-[#FCFCFC] p-3 text-[13px] text-ink-2">
-              {notice}
-            </div>
-          ) : null}
 
           {/* Skeletons rather than a sentence: the cards are a fixed shape, so
               showing that shape immediately makes the wait feel like loading
@@ -233,6 +232,8 @@ export function Dashboard({ stats }: { stats: ValidatorStats }) {
           }}
         />
       ) : null}
+
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
