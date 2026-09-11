@@ -13,6 +13,19 @@
   --color-live: #16a34a;
   --color-btc: #e8730c;
 
+  /* Position-card palette (zinc), deliberately separate from the ink/line
+     tokens above. The card design is transcribed from `Staking Cards.dc.html`,
+     which is built on zinc; the rest of the app is not. Folding the two
+     together would have shifted the landing page, header and dialogs to match
+     a decision that was only ever made about the cards. */
+  --color-card-ink: #18181b;
+  --color-card-mute: #71717a;
+  --color-card-dim: #a1a1aa;
+  --color-card-line: #e4e4e7;
+  --color-card-hair: #f0f0f1;
+  --color-card-tint: #f4f4f5;
+  --color-card-edge: #d4d4d8;
+
   --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
 }
@@ -34,6 +47,31 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Element defaults for interaction. In `@layer base` on purpose: Tailwind's
+   utilities live in a later layer, and unlayered CSS beats every layer
+   regardless of specificity. Left unlayered, these silently overrode
+   `outline-none` on inputs and `cursor-help` on the tooltip triggers. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  a,
+  button {
+    outline-offset: 3px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+  }
+}
+
 /* Every numeral on this page is mono and tabular, so figures line up in
    columns and do not jitter as live values update. */
 .mono,
@@ -52,14 +90,6 @@ body {
 
 .rule {
   border-color: var(--color-line);
-}
-
-a,
-button {
-  outline-offset: 3px;
-}
-:focus-visible {
-  outline: 2px solid var(--color-ink);
 }
 
 /* A verify link: hairline underline that darkens on hover. Used for every

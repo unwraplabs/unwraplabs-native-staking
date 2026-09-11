@@ -1,6 +1,6 @@
 "use client";
 
-import { fromUnits, num } from "@/lib/format";
+import { formatUnits } from "@/lib/format";
 import type { Subscription } from "@/lib/subscriptions";
 
 /**
@@ -33,7 +33,7 @@ export function StrandedBanner({
         >
           <div className="min-w-[260px] flex-1 text-[13.5px] text-ink-2">
             <b className="mb-1 block text-[14px] font-semibold text-ink">
-              <span className="mono">{num(fromUnits(s.held, 18), 2)} STRK</span> is sitting in your{" "}
+              <span className="mono">{formatUnits(s.held, 18)} STRK</span> is sitting in your{" "}
               {s.symbol} receiver
             </b>
             You claimed from the pool directly, so it paid your reward address — the receiver — with

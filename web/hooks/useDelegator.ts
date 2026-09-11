@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "@starknet-react/core";
 import { fetchQuote, routesToCalldata } from "@/lib/avnu";
 import { config, POOLS, poolBySymbol } from "@/lib/config";
-import { normalizeAddress, sameAddress } from "@/lib/format";
+import { formatUnits, normalizeAddress, sameAddress } from "@/lib/format";
 import { fetchHistory, type HistoryEntry } from "@/lib/history";
 import {
   deriveHandlerAddress,
   fetchPositions,
   fetchSubscriptions,
   readPoolMember,
+  tokenBalance,
   type PoolPosition,
   type Subscription,
 } from "@/lib/subscriptions";
@@ -245,6 +246,13 @@ export function useDelegator() {
    * land at the delegator's address in the same transaction. Claiming straight
    * from the pool would deposit them in the receiver with no call attached —
    * the stranded state — which is recoverable but pointless to walk into.
+   *
+   * For a swapping receiver the route must be quoted on what the receiver will
+   * hold when `dispatch` runs — its balance *plus* what `claim()` is about to
+   * pull in — not on its balance alone. The balance is normally zero (the keeper
+   * sweeps it), and `dispatch` asserts a non-empty route before it swaps, so
+   * quoting on the balance alone sent an empty route and reverted the whole
+   * transaction with 'bad route'. This is the same sum the keeper quotes on.
    */
   const claimNow = useCallback(
     async (symbol: string) => {
@@ -261,7 +269,12 @@ export function useDelegator() {
                 {
                   contractAddress: sub.handler,
                   entrypoint: "claim_and_dispatch",
-                  calldata: await dispatchCalldata(sub, address),
+                  // TODO: check again. The route is now quoted on held + unclaimed,
+                  // verified only by a read-only call against a live strkBTC
+                  // receiver on mainnet. Confirm with a real Claim now on a BTC
+                  // card once its rewards are large enough for AVNU to route
+                  // (no route at 0.54 STRK; routes from ~10 STRK up).
+                  calldata: await dispatchCalldata(sub, await heldAfterClaim(sub, address)),
                 },
               ]
             : [
@@ -494,7 +507,8 @@ export function useDelegator() {
           {
             contractAddress: sub.handler,
             entrypoint: "dispatch",
-            calldata: await dispatchCalldata(sub, address),
+            // Read fresh rather than trusting the balance from the last refresh.
+            calldata: await dispatchCalldata(sub, await tokenBalance(config.strk.address, sub.handler)),
           },
         ]);
         await confirm(transaction_hash);
@@ -543,13 +557,28 @@ async function isDeployed(address: string): Promise<boolean> {
 }
 
 /**
+ * What a receiver will hold once `claim()` has run inside `claim_and_dispatch`:
+ * its current STRK plus what the pool still owes. Both read fresh.
+ */
+async function heldAfterClaim(sub: Subscription, member: string): Promise<bigint> {
+  const [held, info] = await Promise.all([
+    tokenBalance(config.strk.address, sub.handler),
+    readPoolMember(sub.pool, member),
+  ]);
+  return held + (info?.unclaimedRewards ?? 0n);
+}
+
+/**
  * `dispatch(amount: u256, min_out: u256, routes: Array<Route>)`.
  *
  * `amount = 0` means "everything held" and `min_out = 0` means "use the
  * contract's own oracle floor" — the handler ignores a caller floor that is
  * looser than its own, so passing zero is safe rather than reckless.
+ *
+ * @param sellAmount what the receiver will hold when `dispatch` runs, which is
+ *                   what the route has to be quoted for
  */
-async function dispatchCalldata(sub: Subscription, taker: string): Promise<string[]> {
+async function dispatchCalldata(sub: Subscription, sellAmount: bigint): Promise<string[]> {
   const amount = ["0", "0"];
   const minOut = ["0", "0"];
 
@@ -558,15 +587,29 @@ async function dispatchCalldata(sub: Subscription, taker: string): Promise<strin
     return [...amount, ...minOut, "0"];
   }
 
-  // The receiver holds the STRK, so it is the taker for quoting purposes.
-  const held = sub.held > 0n ? sub.held : 0n;
-  if (held === 0n) return [...amount, ...minOut, "0"];
+  // Nothing to swap: `dispatch` returns before it ever looks at the route, so
+  // an empty one is fine here — and only here.
+  if (sellAmount === 0n) return [...amount, ...minOut, "0"];
 
+  // The receiver is the taker: AVNU requires beneficiary == caller, and the
+  // caller of the router is the receiver, not the delegator.
   const quote = await fetchQuote({
     sellToken: config.strk.address,
     buyToken: sub.outToken,
-    sellAmount: held,
+    sellAmount,
     taker: sub.handler,
+  }).catch((e: unknown) => {
+    // AVNU serves no route at all for very small amounts into the thinner BTC
+    // tokens (about 10 STRK and up for strkBTC and SolvBTC). That is not a
+    // failure worth a raw API message — the rewards simply wait until there is
+    // enough to swap, which is also what the keeper does.
+    if (e instanceof Error && e.message.includes("no AVNU quote")) {
+      throw new Error(
+        `Too little to swap to ${sub.symbol} yet — there is no route for ` +
+          `${formatUnits(sellAmount, 18)} STRK. It goes out once more has accrued.`,
+      );
+    }
+    throw e;
   });
   return [...amount, ...minOut, ...routesToCalldata(quote.routes)];
 }

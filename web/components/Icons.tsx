@@ -52,3 +52,18 @@ export const SwitchIcon = () => (
     <path d="m10 13-3 3 3 3" />
   </svg>
 );
+
+/** Disclosure caret. Rotated 90° by the caller when its panel is open. */
+export const CaretIcon = () => (
+  <svg {...base} width={13} height={13}>
+    <path d="m9 5 7 7-7 7" />
+  </svg>
+);
+
+/** Close: dismisses an inline editor. */
+export const CloseIcon = () => (
+  <svg {...base} width={14} height={14}>
+    <path d="M6 6l12 12" />
+    <path d="M18 6 6 18" />
+  </svg>
+);

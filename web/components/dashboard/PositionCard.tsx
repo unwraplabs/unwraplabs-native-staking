@@ -1,130 +1,259 @@
 "use client";
 
-import { useState } from "react";
-import { ClaimIcon, StakeIcon, SwitchIcon, UnstakeIcon } from "@/components/Icons";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useAmountInput } from "@/hooks/useAmountInput";
+import {
+  CaretIcon,
+  ClaimIcon,
+  CloseIcon,
+  StakeIcon,
+  SwitchIcon,
+  UnstakeIcon,
+} from "@/components/Icons";
 import { TokenIcon } from "@/components/TokenIcon";
 import { Tooltip } from "@/components/Tooltip";
 import { explorerContract, explorerTx } from "@/lib/config";
-import { fromUnits, num, shortHex, usd } from "@/lib/format";
+import { exactUnits, formatUnits, fromUnits, num, shortHex, usd } from "@/lib/format";
 import { serviceTier, stakedAmount, stakedUsd } from "@/lib/positions";
 import { summarise, type HistoryEntry } from "@/lib/history";
 import { ActivitySkeleton } from "./Skeleton";
 import type { Prices } from "@/lib/prices";
 import type { PoolPosition, Subscription } from "@/lib/subscriptions";
 
+/**
+ * Kept back when staking STRK: the most that can be staked is the wallet less
+ * this. Starknet fees are paid in STRK, so staking a wallet's entire balance
+ * leaves nothing to pay for the next transaction — the unstake included. Not
+ * applied to BTC pools, whose token is never spent on fees, nor to Unstake,
+ * which draws on the pool rather than the wallet.
+ */
+const STRK_GAS_RESERVE = 2n * 10n ** 18n;
+
+/** Layout effect in the browser, plain effect during server render (where
+ *  there is no layout to measure and React would warn). */
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** Space kept between the popover and the viewport edge when choosing a side. */
+const POPOVER_MARGIN = 16;
+
+/** Shared by every bordered control on the card. */
+const SECONDARY =
+  "flex items-center justify-center gap-2 h-[38px] px-2.5 rounded-lg border border-card-line " +
+  "text-[13.5px] text-card-ink/80 transition-colors hover:bg-card-tint hover:border-card-edge " +
+  "hover:text-card-ink disabled:opacity-100 disabled:border-card-hair disabled:text-card-dim " +
+  "disabled:hover:bg-transparent";
+
 function Figure({
   label,
   value,
   unit,
   sub,
+  zero,
+  exact,
 }: {
   label: string;
   value: string;
+  /** Every digit, for the tooltip — the display may be compacted or subscripted. */
+  exact?: string;
   unit?: string;
   sub?: React.ReactNode;
+  /** A figure with nothing in it. Greys out, so an empty position reads as
+   *  empty at a glance without having to parse the digits. */
+  zero?: boolean;
 }) {
+  // Long values step down a size rather than overflowing their column.
+  // Derived from the string, so it holds for any token's formatting.
+  const size = value.length > 7 ? "text-[27px]" : "text-[34px]";
+
   return (
-    <div>
-      <div className="text-[12.5px] text-ink-3">{label}</div>
-      <div className="mono mt-0.5 text-[26px] font-medium tracking-[-0.05em]">
-        {value}
-        {unit ? <span className="ml-1.5 text-[13px] tracking-normal text-ink-2">{unit}</span> : null}
+    <div className="flex min-w-0 flex-col gap-[7px]">
+      <div className="text-[12.5px] text-card-mute">{label}</div>
+      {/* Fixed height, and the sub-line always occupies a row even when there
+          is nothing to put in it. Every figure on every card is then exactly
+          as tall as every other, so the rule under them lands at the same y
+          whatever the step-down did or whether a USD value was available. */}
+      <div
+        className={`tnum flex h-[34px] min-w-0 items-baseline gap-x-[7px] ${
+          zero ? "text-card-dim" : ""
+        }`}
+      >
+        <div
+          className={`mono ${size} font-medium leading-none tracking-[-0.025em]`}
+          title={exact && unit ? `${exact} ${unit}` : undefined}
+        >
+          {value}
+        </div>
+        {unit ? (
+          <div className={`text-[13px] ${zero ? "" : "text-card-mute"}`}>{unit}</div>
+        ) : null}
       </div>
-      {sub ? <div className="mt-0.5 text-[12.5px] text-ink-3">{sub}</div> : null}
+      <div className="text-[12.5px] text-card-mute">{sub ?? "\u00A0"}</div>
     </div>
   );
 }
 
-/** Amount entry that converts to base units on submit. */
-function AmountForm({
+/**
+ * The auto-claim switch.
+ *
+ * Driven entirely by the subscription read back from chain, never by local
+ * state: an optimistic flip would show "on" for a transaction that can still
+ * revert, which is exactly the thing a delegator must be able to trust here.
+ * While a transaction is in flight it is disabled and keeps showing the truth.
+ */
+function AutoClaimSwitch({
+  on,
+  busy,
+  empty,
+  symbol,
+  onChange,
+}: {
+  on: boolean;
+  busy: boolean;
+  /** Nothing staked in this pool. */
+  empty: boolean;
+  symbol: string;
+  onChange: () => void;
+}) {
+  const disabled = busy || empty;
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      aria-label="Automated claiming"
+      disabled={disabled}
+      onClick={onChange}
+      title={
+        busy
+          ? "Waiting on the transaction you just sent"
+          : empty
+            ? `Stake ${symbol} first — there is nothing here to claim from yet`
+            : on
+              ? "Turn off auto-claim"
+              : "Auto-claim works at any size — there is no minimum"
+      }
+      className={`relative h-5 w-9 flex-none rounded-full border transition-colors duration-150 disabled:opacity-50 ${
+        on ? "border-card-ink bg-card-ink" : "border-card-edge bg-white"
+      }`}
+    >
+      <span
+        className={`absolute left-0.5 top-0.5 block h-3.5 w-3.5 rounded-full transition-[transform,background-color] duration-150 ${
+          on ? "translate-x-4 bg-white" : "translate-x-0 bg-card-dim"
+        }`}
+      />
+    </button>
+  );
+}
+
+/**
+ * Inline amount entry. Replaces its own trigger button in place rather than
+ * opening a panel under the card, so the field appears exactly where the
+ * delegator's eye already is.
+ *
+ * Controlled by the card: the card owns the value because the hint line that
+ * explains it (balance, or what is wrong) sits below the whole action stack.
+ */
+function AmountEditor({
+  size,
   action,
   symbol,
-  decimals,
-  available,
-  availableLabel,
+  value,
+  onChange,
+  balance,
+  chip,
+  onChip,
+  invalid,
+  canSubmit,
   busy,
+  hintId,
   onSubmit,
   onCancel,
 }: {
+  /** `lg` stands in for the 44px Stake button, `sm` for the 38px row. */
+  size: "lg" | "sm";
   action: "Stake" | "Unstake";
   symbol: string;
-  decimals: number;
-  /** How much can go into this action: wallet balance, or the staked amount. */
-  available: number;
-  availableLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** What can go in, shown in the field as "/ 7.17" so the ceiling is visible
+   *  while typing rather than only after going over it. */
+  balance: string;
+  /** Chip label, e.g. "MAX". Omitted when there is nothing to fill in. */
+  chip?: string;
+  onChip: () => void;
+  invalid: boolean;
+  canSubmit: boolean;
   busy: boolean;
-  onSubmit: (amount: bigint) => void;
+  hintId: string;
+  onSubmit: () => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState("");
-  const entered = Number(value);
-  const overAvailable = Number.isFinite(entered) && entered > available;
-
-  const submit = () => {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > available) return;
-    // Round through a fixed-decimal string so floating point never introduces a
-    // trailing fraction of a base unit.
-    onSubmit(BigInt(parsed.toFixed(decimals).replace(".", "")));
-  };
-
-  const dp = symbol === "STRK" ? 2 : 6;
-
+  const lg = size === "lg";
   return (
-    <div className="mt-4 border border-line p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-[13px] text-ink-2">
-          {action} amount
-          <span className="sr-only"> in {symbol}</span>
-        </label>
+    <div className={`flex items-stretch gap-2 ${lg ? "h-11" : "h-[38px]"}`}>
+      <div
+        className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border pl-3 pr-1 ${
+          invalid ? "border-btc" : "border-card-ink"
+        }`}
+      >
         <input
           autoFocus
           inputMode="decimal"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && canSubmit) onSubmit();
+            if (e.key === "Escape") onCancel();
+          }}
           placeholder="0.00"
-          aria-invalid={overAvailable}
-          className={`mono w-32 border px-2 py-1.5 text-[13.5px] focus:outline-none ${
-            overAvailable ? "border-btc" : "border-line focus:border-ink"
+          aria-label={`${action} amount in ${symbol}`}
+          aria-invalid={invalid}
+          aria-describedby={hintId}
+          className={`tnum min-w-0 flex-1 bg-transparent font-medium text-card-ink outline-none placeholder:text-card-dim ${
+            lg ? "text-[15px]" : "text-[14px]"
           }`}
         />
-        <span className="mono text-[12px] text-ink-3">{symbol}</span>
-        <button
-          onClick={submit}
-          disabled={busy || overAvailable}
-          className="rounded-[4px] bg-ink px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-40"
-        >
-          {busy ? "Working…" : action}
-        </button>
-        <button onClick={onCancel} className="px-2 text-[13px] text-ink-2 hover:text-ink">
-          Cancel
-        </button>
-      </div>
-
-      {/* What you can actually put in. Without this the field is a guess, and
-          the transaction fails at the wallet rather than here. */}
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
-        <span className="text-ink-3">
-          {availableLabel} <span className="mono text-ink-2">{num(available, dp)} {symbol}</span>
+        <span className="mono flex-none text-[12.5px] text-card-mute" aria-hidden>
+          / {balance}
         </span>
-        {available > 0 ? (
+        {chip ? (
           <button
-            onClick={() => setValue(String(available))}
-            className="mono text-[12px] text-ink-2 underline transition-colors hover:text-ink"
+            onClick={onChip}
+            className={`flex-none rounded-md bg-card-tint px-2 text-[11px] font-medium tracking-[0.04em] text-card-ink/80 transition-colors hover:bg-card-line hover:text-card-ink ${
+              lg ? "py-[5px]" : "py-1"
+            }`}
           >
-            Max
+            {chip}
           </button>
         ) : null}
-        {overAvailable ? (
-          <span className="text-btc">More than you have available</span>
-        ) : null}
       </div>
+
+      <button
+        onClick={onSubmit}
+        disabled={!canSubmit || busy}
+        className={`flex-none rounded-lg border border-card-ink font-medium transition-colors disabled:opacity-40 ${
+          lg
+            ? "bg-card-ink px-[18px] text-[14px] text-white hover:bg-neutral-700"
+            : "bg-white px-4 text-[13.5px] text-card-ink hover:bg-card-tint"
+        }`}
+      >
+        {busy ? "Working…" : action}
+      </button>
+
+      <button
+        onClick={onCancel}
+        aria-label="Cancel"
+        title="Cancel"
+        className={`flex flex-none items-center justify-center rounded-lg border border-card-line bg-white text-card-mute transition-colors hover:border-card-edge hover:bg-card-tint hover:text-card-ink ${
+          lg ? "w-11" : "w-[38px]"
+        }`}
+      >
+        <CloseIcon />
+      </button>
     </div>
   );
 }
 
-/** Address row with an explanation, used for the two addresses that matter. */
+/** Address row with an explanation, used for the addresses that matter. */
 function AddressRow({
   label,
   address,
@@ -132,16 +261,20 @@ function AddressRow({
 }: {
   label: string;
   address: string;
-  explain: React.ReactNode;
+  explain?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-1.5 text-[12.5px]">
-      <Tooltip label={<span className="text-ink-2">{label}</span>}>{explain}</Tooltip>
+    <div className="flex items-center justify-between gap-4 text-[12.5px]">
+      {explain ? (
+        <Tooltip label={<span className="text-card-mute">{label}</span>}>{explain}</Tooltip>
+      ) : (
+        <span className="text-card-mute">{label}</span>
+      )}
       <a
         href={explorerContract(address)}
         target="_blank"
         rel="noopener noreferrer"
-        className="mono text-ink transition-colors hover:underline"
+        className="mono text-card-ink transition-colors hover:underline"
       >
         {shortHex(address)}
       </a>
@@ -181,13 +314,73 @@ export function PositionCard({
   onSwitch: () => void;
 }) {
   const [form, setForm] = useState<"stake" | "unstake" | null>(null);
+  const [details, setDetails] = useState(false);
+  const detailsRef = useRef<HTMLDivElement>(null);
+  const detailsButton = useRef<HTMLButtonElement>(null);
+  const detailsId = useId();
+  const detailsPop = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<"down" | "up">("down");
+
+  // Down by default; up only when it will not fit below *and* there is more
+  // room above — the usual rule for popovers. Measured before paint, so it
+  // never flashes on the wrong side, and again on scroll and resize while open.
+  useIsoLayoutEffect(() => {
+    if (!details) return;
+    const place = () => {
+      const anchor = detailsRef.current?.getBoundingClientRect();
+      const height = detailsPop.current?.offsetHeight ?? 0;
+      if (!anchor) return;
+      const below = window.innerHeight - anchor.bottom;
+      const above = anchor.top;
+      setPlacement(below >= height + POPOVER_MARGIN || below >= above ? "down" : "up");
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [details]);
+
+  // The popover closes on a click anywhere outside it, and on Escape — which
+  // also hands focus back to the button, so a keyboard user is not dropped at
+  // the top of the page.
+  useEffect(() => {
+    if (!details) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!detailsRef.current?.contains(e.target as Node)) setDetails(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setDetails(false);
+      detailsButton.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [details]);
+  const hintId = useId();
 
   const staked = stakedAmount(position);
   const walletBalance = fromUnits(position.walletBalance, position.decimals);
   const value = stakedUsd(position, prices);
   const unclaimed = position.unclaimed ? fromUnits(position.unclaimed, 18) : 0;
-  const isBtc = position.kind === "btc";
   const auto = subscription?.active ?? false;
+  // Nothing staked in this pool. Every control that acts on a position here is
+  // meaningless in that state, so they go dead. Stake and Switch stay live:
+  // both bring stake *in*, and an empty pool is exactly where a delegator
+  // moving over from another validator starts.
+  //
+  // TODO: check if accounts close after positions close / verify how it works.
+  // If the pool drops a member on full exit, `staked === 0` and "never joined"
+  // become indistinguishable here, and a delegator who exits with auto-claim
+  // still on would find the switch greyed out with their receiver still
+  // installed as the pool's reward address.
+  const empty = staked === 0;
   const swapsToBtc =
     auto && Boolean(subscription?.outToken) && BigInt(subscription!.outToken) !== 0n;
   const tier = serviceTier(position, prices);
@@ -204,75 +397,236 @@ export function PositionCard({
   const paidOutSymbol = swapsToBtc ? position.symbol : "STRK";
   const paidOutDecimals = swapsToBtc ? position.decimals : 18;
 
+  const loadingActivity = auto && subscription && historyLoading && !history;
+
+  // The open editor. Stake is bounded by the wallet (less the gas reserve for
+  // STRK), Unstake by the stake; the hook keeps the amount in exact base units
+  // so nothing that becomes calldata ever passes through a float.
+  const dp = position.symbol === "STRK" ? 2 : 6;
+  const reserve = position.kind === "strk" ? STRK_GAS_RESERVE : 0n;
+  const stakeable = position.walletBalance > reserve ? position.walletBalance - reserve : 0n;
+  const limit = form === "unstake" ? (position.staked ?? 0n) : stakeable;
+  const input = useAmountInput(limit, position.decimals, dp);
+  const { parsed, malformed, tooMuch, ceiling } = input;
+
+  const open = (next: "stake" | "unstake" | null) => {
+    setForm(next);
+    input.reset();
+  };
+  const submit = () => {
+    if (!input.valid || parsed === null) return;
+    if (form === "stake") onStake(parsed);
+    if (form === "unstake") onUnstake(parsed);
+    open(null);
+  };
+
+  // One line under the whole stack. Reserved even when empty, so opening an
+  // editor never shifts the Details rule below it.
+  const hint: { text: string; error?: boolean } | null =
+    form !== null && malformed
+      ? { text: `Not a valid ${position.symbol} amount`, error: true }
+      : form === "stake"
+        ? tooMuch
+          ? reserve > 0n
+            ? { text: `More than you can stake — ${ceiling} ${position.symbol} after gas`, error: true }
+            : { text: `More than you have — ${ceiling} ${position.symbol} in your wallet`, error: true }
+          : // The real wallet balance, not the stakeable figure in the field.
+            {
+              text: `In your wallet ${formatUnits(position.walletBalance, position.decimals, dp)} ${position.symbol}`,
+            }
+        : form === "unstake"
+          ? tooMuch
+            ? { text: `More than you have staked — ${ceiling} ${position.symbol}`, error: true }
+            : { text: "Unstaking stops rewards on that amount" }
+          : empty
+            ? { text: "Nothing staked yet" }
+            : null;
+
   return (
-    <div className="min-w-0 border-t border-line py-6">
-      <div className="mb-4 flex items-center gap-3">
-        <TokenIcon src={position.icon} symbol={position.symbol} />
-        <h3 className="text-[17px] font-semibold tracking-[-0.02em]">{position.symbol}</h3>
-        {auto ? (
-          <span className="flex items-center gap-1.5 rounded-[3px] border border-line px-2 py-0.5 font-mono text-[11px] text-ink-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-live" />
-            auto-claim On
-          </span>
-        ) : null}
-        <span className="ml-auto font-mono text-[12px] text-ink-2">
+    <div className="flex min-w-0 flex-col gap-[26px] rounded-lg border border-card-line bg-white p-7 text-card-ink">
+      <div className="flex items-center gap-3">
+        <TokenIcon src={position.icon} symbol={position.symbol} size={30} />
+        <h3 className="text-[19px] font-medium tracking-[-0.01em]">{position.symbol}</h3>
+        <span className="tnum ml-auto text-[13px] text-card-mute">
           {apr !== undefined ? `APR ${num(apr, 2)}%` : null}
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-x-8 gap-y-5 2xl:gap-x-12">
+      <div className="grid grid-cols-2 gap-7">
         <Figure
           label="Staked"
-          value={num(staked, isBtc ? 6 : 2)}
+          value={formatUnits(position.staked ?? 0n, position.decimals)}
+          exact={exactUnits(position.staked ?? 0n, position.decimals)}
           unit={position.symbol}
           sub={value !== null ? `≈ ${usd(value)}` : undefined}
+          zero={staked === 0}
         />
         <Figure
           label="Unclaimed rewards"
-          value={num(unclaimed, 2)}
+          value={formatUnits(position.unclaimed ?? 0n, 18)}
+          exact={exactUnits(position.unclaimed ?? 0n, 18)}
           unit="STRK"
-          sub={
-            swapsToBtc
-              ? `Swapped to ${position.symbol} on claim`
-              : "Paid as STRK"
-          }
+          sub={swapsToBtc ? `Swapped to ${position.symbol} on claim` : "Paid as STRK"}
+          zero={unclaimed === 0}
         />
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setForm(form === "stake" ? null : "stake")}
-          disabled={walletBalance === 0}
-          title={walletBalance === 0 ? `No ${position.symbol} in this wallet` : undefined}
-          className="flex items-center gap-2 rounded-[4px] bg-ink px-4 py-2 text-[13.5px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-40"
-        >
-          <StakeIcon />
-          Stake
-        </button>
-        <button
-          onClick={() => setForm(form === "unstake" ? null : "unstake")}
-          disabled={staked === 0}
-          title={staked === 0 ? `Nothing staked to unstake` : undefined}
-          className="flex items-center gap-2 rounded-[4px] border border-line px-4 py-2 text-[13.5px] transition-colors hover:border-ink disabled:opacity-40"
-        >
-          <UnstakeIcon />
-          Unstake
-        </button>
-        <button
-          onClick={onClaim}
-          disabled={busy || unclaimed === 0}
-          title={
-            busy
-              ? "Waiting on the transaction you just sent"
-              : unclaimed === 0
-                ? "No rewards have accrued yet"
-                : undefined
-          }
-          className="flex items-center gap-2 rounded-[4px] border border-line px-4 py-2 text-[13.5px] transition-colors hover:border-ink disabled:opacity-40"
-        >
-          <ClaimIcon />
-          {auto ? "Claim now" : "Claim rewards"}
-        </button>
+      {/* Auto-claim leads the lower half of the card: it is the thing this
+          service exists to do, and it is a control rather than a status. */}
+      <div className="flex flex-col gap-2.5 border-t border-card-hair pt-[22px]">
+        <div className="flex items-center gap-3">
+          <AutoClaimSwitch
+            on={auto}
+            busy={busy}
+            empty={empty}
+            symbol={position.symbol}
+            onChange={auto ? onUnsubscribe : onSubscribe}
+          />
+          <div className="text-[14px] font-medium">Auto-claim {auto ? "ON" : "OFF"}</div>
+          {auto && summary.runs > 0 ? (
+            <div className="tnum ml-auto text-[12.5px] text-card-mute">
+              {summary.runs} {summary.runs === 1 ? "payout" : "payouts"}
+            </div>
+          ) : null}
+        </div>
+
+        {loadingActivity ? <ActivitySkeleton /> : null}
+
+        {auto && subscription && !loadingActivity ? (
+          summary.runs === 0 && summary.claimed === 0n ? (
+            <p className="text-[12.5px] leading-relaxed text-card-mute">
+              Nothing claimed yet. The next scheduled run will pick up your rewards, or you can
+              claim now and have them sent straight through.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="text-[12.5px] text-card-mute">Since you turned it on</div>
+              <div className="flex flex-wrap gap-x-10 gap-y-3">
+                <div className="flex flex-col gap-1">
+                  <div className="text-[12.5px] text-card-mute">Claimed from the pool</div>
+                  <div className="tnum text-[15px] font-semibold">
+                    {formatUnits(summary.claimed, 18)} STRK
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="text-[12.5px] text-card-mute">Sent to you</div>
+                  <div className="tnum text-[15px] font-semibold">
+                    {formatUnits(paidOut, paidOutDecimals, paidOutSymbol === "STRK" ? 2 : 6)}{" "}
+                    {paidOutSymbol}
+                  </div>
+                </div>
+              </div>
+              {summary.lastTxHash ? (
+                <a
+                  href={explorerTx(summary.lastTxHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-wrap gap-2 text-[12.5px] text-card-mute transition-colors hover:text-card-ink"
+                >
+                  <span>Last run</span>
+                  {summary.lastBlock ? (
+                    <span className="mono">block {summary.lastBlock}</span>
+                  ) : null}
+                </a>
+              ) : null}
+            </div>
+          )
+        ) : null}
+
+        {!auto ? (
+          <p className="text-[12.5px] leading-relaxed text-card-mute">
+            Rewards sit in the pool until you claim them yourself.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-auto flex flex-col gap-3">
+        {form === "stake" ? (
+          <AmountEditor
+            size="lg"
+            action="Stake"
+            symbol={position.symbol}
+            value={input.value}
+            onChange={input.set}
+            balance={ceiling}
+            chip={input.canMax ? "MAX" : undefined}
+            onChip={input.max}
+            invalid={malformed || tooMuch}
+            canSubmit={input.valid}
+            busy={busy}
+            hintId={hintId}
+            onSubmit={submit}
+            onCancel={() => open(null)}
+          />
+        ) : (
+          <button
+            onClick={() => open("stake")}
+            // Never disabled. Stake is the one way out of an empty position, so
+            // it stays live even with an empty wallet — the editor then says
+            // what the balance actually is, which a greyed-out button never could.
+            title={
+              walletBalance === 0 ? `No ${position.symbol} in this wallet yet` : undefined
+            }
+            className={`flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-card-ink text-[14px] font-medium text-white transition-[background-color,opacity] hover:bg-neutral-700 ${
+              form === "unstake" ? "opacity-40" : ""
+            }`}
+          >
+            <StakeIcon />
+            Stake
+          </button>
+        )}
+
+        {form === "unstake" ? (
+          <AmountEditor
+            size="sm"
+            action="Unstake"
+            symbol={position.symbol}
+            value={input.value}
+            onChange={input.set}
+            balance={ceiling}
+            chip={input.canMax ? "MAX" : undefined}
+            onChip={input.max}
+            invalid={malformed || tooMuch}
+            canSubmit={input.valid}
+            busy={busy}
+            hintId={hintId}
+            onSubmit={submit}
+            onCancel={() => open(null)}
+          />
+        ) : (
+          <div
+            className={`grid grid-cols-2 gap-2.5 transition-opacity ${
+              form === "stake" ? "opacity-40" : ""
+            }`}
+          >
+            <button
+              onClick={() => open("unstake")}
+              disabled={empty}
+              title={empty ? `Nothing staked to unstake` : undefined}
+              className={SECONDARY}
+            >
+              <UnstakeIcon />
+              Unstake
+            </button>
+            <button
+              onClick={onClaim}
+              disabled={busy || empty || unclaimed === 0}
+              title={
+                busy
+                  ? "Waiting on the transaction you just sent"
+                  : empty
+                    ? `Stake ${position.symbol} first — there is nothing here to claim from yet`
+                    : unclaimed === 0
+                      ? "No rewards have accrued yet"
+                      : undefined
+              }
+              className={SECONDARY}
+            >
+              <ClaimIcon />
+              {auto ? "Claim now" : "Claim rewards"}
+            </button>
+          </div>
+        )}
 
         <button
           onClick={onSwitch}
@@ -282,180 +636,104 @@ export function PositionCard({
               ? "Waiting on the transaction you just sent"
               : `Move ${position.symbol} here from another validator, in one transaction`
           }
-          className="flex items-center gap-2 rounded-[4px] border border-line px-4 py-2 text-[13.5px] transition-colors hover:border-ink disabled:opacity-40"
+          className={SECONDARY}
         >
           <SwitchIcon />
           Switch here
         </button>
 
-        {auto ? (
-          <button
-            onClick={onUnsubscribe}
-            disabled={busy}
-            title={busy ? "Waiting on the transaction you just sent" : undefined}
-            className="rounded-[4px] border border-line px-4 py-2 text-[13.5px] transition-colors hover:border-ink disabled:opacity-40"
-          >
-            Turn off auto-claim
-          </button>
-        ) : (
-          <button
-            onClick={onSubscribe}
-            disabled={busy}
-            title={
-              busy
-                ? "Waiting on the transaction you just sent"
-                : "Auto-claim works at any size — there is no minimum"
-            }
-            className="rounded-[4px] border border-ink px-4 py-2 text-[13.5px] font-medium transition-colors hover:bg-ink hover:text-white disabled:opacity-40"
-          >
-            Turn on auto-claim
-          </button>
-        )}
-
-        <a
-          href={explorerContract(position.pool)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="verify ml-auto"
+        <div
+          id={hintId}
+          aria-live="polite"
+          className={`min-h-[18px] text-[12px] ${hint?.error ? "text-btc" : "text-card-mute"}`}
         >
-          Pool contract
-        </a>
+          {hint?.text}
+        </div>
       </div>
 
-      {form === "stake" ? (
-        <AmountForm
-          action="Stake"
-          symbol={position.symbol}
-          decimals={position.decimals}
-          available={walletBalance}
-          availableLabel="In your wallet:"
-          busy={busy}
-          onSubmit={(a) => {
-            onStake(a);
-            setForm(null);
-          }}
-          onCancel={() => setForm(null)}
-        />
-      ) : null}
-      {form === "unstake" ? (
-        <AmountForm
-          action="Unstake"
-          symbol={position.symbol}
-          decimals={position.decimals}
-          available={staked}
-          availableLabel="Currently staked:"
-          busy={busy}
-          onSubmit={(a) => {
-            onUnstake(a);
-            setForm(null);
-          }}
-          onCancel={() => setForm(null)}
-        />
-      ) : null}
+      {/* The addresses and the cadence note, in a popover. They are what a
+          delegator checks once and then stops looking at; expanding them in
+          place made this card taller than its neighbour and knocked the grid
+          out of line, so they float over the page instead. Opens downward,
+          flipping upward over the card's own actions only when the viewport
+          has no room below. */}
+      <div ref={detailsRef} className="relative border-t border-card-hair pt-4">
+        <button
+          ref={detailsButton}
+          onClick={() => setDetails(!details)}
+          aria-expanded={details}
+          aria-controls={detailsId}
+          className="flex w-full items-center gap-2 text-[13px] text-card-mute transition-colors hover:text-card-ink"
+        >
+          <span>Details</span>
+          <span
+            className={`inline-flex transition-transform duration-150 ${details ? "rotate-90" : ""}`}
+          >
+            <CaretIcon />
+          </span>
+        </button>
 
-      {/* What the receiver has actually paid, not what it promises to pay.
-          Both figures come from its own events, so they are checkable. */}
-      {auto && subscription && historyLoading && !history ? <ActivitySkeleton /> : null}
-
-      {auto && subscription && !(historyLoading && !history) ? (
-        <div className="mt-5 border border-line p-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[12.5px] text-ink-3">Since you turned it on</span>
-            {summary.runs > 0 ? (
-              <span className="mono text-[11.5px] text-ink-3">
-                {summary.runs} {summary.runs === 1 ? "payout" : "payouts"}
-              </span>
-            ) : null}
-          </div>
-
-          {summary.runs === 0 && summary.claimed === 0n ? (
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
-              Nothing claimed yet. The next scheduled run will pick up your rewards, or you can
-              claim now and have them sent straight through.
-            </p>
-          ) : (
+        {/* No max-height or scroll, unlike the canvas: the address tooltips
+            open upward and a scrolling container would clip the first one.
+            The content is a fixed handful of rows, well inside 280px. */}
+        <div
+          id={detailsId}
+          ref={detailsPop}
+          hidden={!details}
+          className={`absolute -inset-x-2 z-20 flex flex-col gap-3 rounded-lg border border-card-edge bg-white p-[18px] shadow-[0_12px_32px_rgba(24,24,27,0.12)] ${
+            placement === "down" ? "top-[calc(100%+10px)]" : "bottom-[calc(100%+10px)]"
+          }`}
+        >
+          {auto && subscription ? (
             <>
-              <div className="mt-2 flex flex-wrap gap-x-10 gap-y-3">
-                <div>
-                  <div className="text-[12px] text-ink-3">Claimed from the pool</div>
-                  <div className="mono mt-0.5 text-[17px] font-medium tracking-[-0.03em]">
-                    {num(fromUnits(summary.claimed, 18), 2)}
-                    <span className="ml-1 text-[11.5px] tracking-normal text-ink-2">STRK</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[12px] text-ink-3">Sent to you</div>
-                  <div className="mono mt-0.5 text-[17px] font-medium tracking-[-0.03em]">
-                    {num(fromUnits(paidOut, paidOutDecimals), paidOutSymbol === "STRK" ? 2 : 6)}
-                    <span className="ml-1 text-[11.5px] tracking-normal text-ink-2">
-                      {paidOutSymbol}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {summary.lastTxHash ? (
-                <a
-                  href={explorerTx(summary.lastTxHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="verify mt-2.5 inline-block"
-                >
-                  Last run{summary.lastBlock ? ` · block ${summary.lastBlock}` : ""}
-                </a>
-              ) : null}
+              <AddressRow
+                label="Reward address (set on the pool)"
+                address={subscription.rewardAddress}
+                explain={
+                  <>
+                    The address the staking pool pays. Yours currently points at your receiver
+                    contract, which is what makes automated claiming work. Only you can change it,
+                    and changing it back to your own address turns auto-claim off.
+                  </>
+                }
+              />
+              <AddressRow
+                label="Receiver contract"
+                address={subscription.handler}
+                explain={
+                  <>
+                    Deployed for you alone. It claims from the pool and forwards to your payout
+                    address, and it can do nothing else — no owner, no upgrade, and it cannot touch
+                    your staked principal.
+                  </>
+                }
+              />
+              <AddressRow
+                label="Pays out to"
+                address={subscription.payout}
+                explain={
+                  <>
+                    Where your rewards land. Fixed when the receiver was deployed and not editable
+                    afterwards — to pay a different address you turn auto-claim on again with that
+                    address, which creates a separate receiver.
+                  </>
+                }
+              />
             </>
-          )}
-        </div>
-      ) : null}
+          ) : null}
 
-      {/* The two addresses a subscribed delegator should be able to see and
-          check, with the distinction between them spelled out — they are easy
-          to confuse and only one of them holds anything. */}
-      {auto && subscription ? (
-        <div className="mt-4 border-t border-line-2 pt-2">
-          <AddressRow
-            label="Reward address (set on the pool)"
-            address={subscription.rewardAddress}
-            explain={
-              <>
-                The address the staking pool pays. Yours currently points at your receiver
-                contract, which is what makes automated claiming work. Only you can change it,
-                and changing it back to your own address turns auto-claim off.
-              </>
-            }
-          />
-          <AddressRow
-            label="Receiver contract"
-            address={subscription.handler}
-            explain={
-              <>
-                Deployed for you alone. It claims from the pool and forwards to your payout
-                address, and it can do nothing else — no owner, no upgrade, and it cannot
-                touch your staked principal.
-              </>
-            }
-          />
-          <AddressRow
-            label="Pays out to"
-            address={subscription.payout}
-            explain={
-              <>
-                Where your rewards land. Fixed when the receiver was deployed and not editable
-                afterwards — to pay a different address you turn auto-claim on again with that
-                address, which creates a separate receiver.
-              </>
-            }
-          />
-        </div>
-      ) : null}
+          <AddressRow label="Pool contract" address={position.pool} />
 
-      {auto && !tier.meetsMinimum ? (
-        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-          Positions under {tier.threshold} are claimed once enough rewards have accumulated to be
-          worth the gas, rather than every week. Timing is at the operator&apos;s discretion. There
-          is no minimum in the contract and nothing here is gated — only the cadence changes.
-        </p>
-      ) : null}
+          {auto && !tier.meetsMinimum ? (
+            <p className="pt-1 text-[12.5px] leading-relaxed text-card-mute">
+              Positions under {tier.threshold} are claimed once enough rewards have accumulated to
+              be worth the gas, rather than every week. Timing is at the operator&apos;s discretion.
+              There is no minimum in the contract and nothing here is gated — only the cadence
+              changes.
+            </p>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
