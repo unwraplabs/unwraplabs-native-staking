@@ -12,7 +12,16 @@ import {
 import { TokenIcon } from "@/components/TokenIcon";
 import { Tooltip } from "@/components/Tooltip";
 import { explorerContract, explorerTx } from "@/lib/config";
-import { fromUnits, num, parseUnits, shortHex, unitsToInput, usd } from "@/lib/format";
+import {
+  exactUnits,
+  formatUnits,
+  fromUnits,
+  num,
+  parseUnits,
+  shortHex,
+  unitsToInput,
+  usd,
+} from "@/lib/format";
 import { serviceTier, stakedAmount, stakedUsd } from "@/lib/positions";
 import { summarise, type HistoryEntry } from "@/lib/history";
 import { ActivitySkeleton } from "./Skeleton";
@@ -32,9 +41,12 @@ function Figure({
   unit,
   sub,
   zero,
+  exact,
 }: {
   label: string;
   value: string;
+  /** Every digit, for the tooltip — the display may be compacted or subscripted. */
+  exact?: string;
   unit?: string;
   sub?: React.ReactNode;
   /** A figure with nothing in it. Greys out, so an empty position reads as
@@ -57,7 +69,12 @@ function Figure({
           zero ? "text-card-dim" : ""
         }`}
       >
-        <div className={`mono ${size} font-medium leading-none tracking-[-0.025em]`}>{value}</div>
+        <div
+          className={`mono ${size} font-medium leading-none tracking-[-0.025em]`}
+          title={exact && unit ? `${exact} ${unit}` : undefined}
+        >
+          {value}
+        </div>
         {unit ? (
           <div className={`text-[13px] ${zero ? "" : "text-card-mute"}`}>{unit}</div>
         ) : null}
@@ -335,7 +352,16 @@ export function PositionCard({
   // for display above; nothing that becomes calldata passes through one.
   const limit = form === "unstake" ? (position.staked ?? 0n) : position.walletBalance;
   const dp = position.symbol === "STRK" ? 2 : 6;
-  const shown = unitsToInput(limit, position.decimals, dp);
+  // What MAX puts in the field: plain digits, since a subscript would not parse
+  // back. Normally truncated to dp; but a balance too small to survive that
+  // (0.0004 STRK at 2dp is "0.00") goes in whole, or the field would read zero.
+  const truncated = unitsToInput(limit, position.decimals, dp);
+  const fill =
+    limit > 0n && parseUnits(truncated, position.decimals) === 0n
+      ? exactUnits(limit, position.decimals)
+      : truncated;
+  // What the field and hint show as the ceiling.
+  const ceiling = formatUnits(limit, position.decimals, dp);
   const parsed = whole ? limit : parseUnits(amount, position.decimals);
   const malformed = amount.trim() !== "" && parsed === null;
   const tooMuch = parsed !== null && parsed > limit;
@@ -360,11 +386,11 @@ export function PositionCard({
       ? { text: `Not a valid ${position.symbol} amount`, error: true }
       : form === "stake"
         ? tooMuch
-          ? { text: `More than you have — ${shown} ${position.symbol} in your wallet`, error: true }
-          : { text: `In your wallet ${shown} ${position.symbol}` }
+          ? { text: `More than you have — ${ceiling} ${position.symbol} in your wallet`, error: true }
+          : { text: `In your wallet ${ceiling} ${position.symbol}` }
         : form === "unstake"
           ? tooMuch
-            ? { text: `More than you have staked — ${shown} ${position.symbol}`, error: true }
+            ? { text: `More than you have staked — ${ceiling} ${position.symbol}`, error: true }
             : { text: "Unstaking stops rewards on that amount" }
           : empty
             ? { text: "Nothing staked yet" }
@@ -383,14 +409,16 @@ export function PositionCard({
       <div className="grid grid-cols-2 gap-7">
         <Figure
           label="Staked"
-          value={num(staked, 2)}
+          value={formatUnits(position.staked ?? 0n, position.decimals)}
+          exact={exactUnits(position.staked ?? 0n, position.decimals)}
           unit={position.symbol}
           sub={value !== null ? `≈ ${usd(value)}` : undefined}
           zero={staked === 0}
         />
         <Figure
           label="Unclaimed rewards"
-          value={num(unclaimed, 2)}
+          value={formatUnits(position.unclaimed ?? 0n, 18)}
+          exact={exactUnits(position.unclaimed ?? 0n, 18)}
           unit="STRK"
           sub={swapsToBtc ? `Swapped to ${position.symbol} on claim` : "Paid as STRK"}
           zero={unclaimed === 0}
@@ -431,13 +459,13 @@ export function PositionCard({
                 <div className="flex flex-col gap-1">
                   <div className="text-[12.5px] text-card-mute">Claimed from the pool</div>
                   <div className="tnum text-[15px] font-semibold">
-                    {num(fromUnits(summary.claimed, 18), 2)} STRK
+                    {formatUnits(summary.claimed, 18)} STRK
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="text-[12.5px] text-card-mute">Sent to you</div>
                   <div className="tnum text-[15px] font-semibold">
-                    {num(fromUnits(paidOut, paidOutDecimals), paidOutSymbol === "STRK" ? 2 : 6)}{" "}
+                    {formatUnits(paidOut, paidOutDecimals, paidOutSymbol === "STRK" ? 2 : 6)}{" "}
                     {paidOutSymbol}
                   </div>
                 </div>
@@ -477,10 +505,10 @@ export function PositionCard({
               setAmount(v);
               setWhole(false);
             }}
-            balance={shown}
+            balance={ceiling}
             chip={position.walletBalance > 0n ? "MAX" : undefined}
             onChip={() => {
-              setAmount(shown);
+              setAmount(fill);
               setWhole(true);
             }}
             invalid={malformed || tooMuch}
@@ -518,10 +546,10 @@ export function PositionCard({
               setAmount(v);
               setWhole(false);
             }}
-            balance={shown}
+            balance={ceiling}
             chip="MAX"
             onChip={() => {
-              setAmount(shown);
+              setAmount(fill);
               setWhole(true);
             }}
             invalid={malformed || tooMuch}

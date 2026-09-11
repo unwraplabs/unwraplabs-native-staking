@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   compact,
+  exactUnits,
+  formatUnits,
   fromUnits,
   normalizeAddress,
   num,
@@ -101,5 +103,47 @@ describe("unitsToInput", () => {
   it("round-trips through parseUnits without growing", () => {
     const bal = 7_173_412_345_678_901_234n;
     expect(parseUnits(unitsToInput(bal, 18, 2), 18)! <= bal).toBe(true);
+  });
+});
+
+describe("formatUnits", () => {
+  const E18 = 10n ** 18n;
+
+  it("prints ordinary amounts grouped, truncated to dp", () => {
+    expect(formatUnits(0n, 18)).toBe("0.00");
+    expect(formatUnits(10n * E18, 18)).toBe("10.00");
+    expect(formatUnits(1_234_567n * 10n ** 15n, 18)).toBe("1,234.56"); // 1234.567, not .57
+    expect(formatUnits(9_999_999n * 10n ** 15n, 18)).toBe("9,999.99");
+    expect(formatUnits(4_120_000n, 8, 6)).toBe("0.041200");
+  });
+
+  it("compacts from ten thousand up, truncating", () => {
+    expect(formatUnits(10_000n * E18, 18)).toBe("10.00K");
+    expect(formatUnits(12_345_678n * 10n ** 15n, 18)).toBe("12.34K");
+    expect(formatUnits(3_448_275_860n * 10n ** 15n, 18)).toBe("3.44M");
+    expect(formatUnits(2n * 10n ** 9n * E18, 18)).toBe("2.00B");
+  });
+
+  it("shows tiny amounts instead of rounding them to zero", () => {
+    // The bug this exists for: under 0.005 STRK used to read "0.00".
+    expect(formatUnits(4n * 10n ** 15n, 18)).toBe("0.004");
+    expect(formatUnits(4n * 10n ** 14n, 18)).toBe("0.0004");
+    expect(formatUnits(7_612_345n * 10n ** 9n, 18)).toBe("0.00761");
+    expect(formatUnits(130_434n, 8)).toBe("0.0013"); // WBTC, trailing zero trimmed
+  });
+
+  it("switches to subscript notation from four leading zeros", () => {
+    expect(formatUnits(76n * 10n ** 11n, 18)).toBe("0.0₅76"); // 0.0000076
+    expect(formatUnits(4n * 10n ** 13n, 18)).toBe("0.0₄4"); //  0.00004
+    expect(formatUnits(1n, 18)).toBe("0.0₁₇1"); //              one wei
+  });
+});
+
+describe("exactUnits", () => {
+  it("keeps every digit and drops trailing zeros", () => {
+    expect(exactUnits(7_173_412_345_678_901_234n, 18)).toBe("7.173412345678901234");
+    expect(exactUnits(10n * 10n ** 18n, 18)).toBe("10");
+    expect(exactUnits(0n, 18)).toBe("0");
+    expect(exactUnits(1n, 18)).toBe("0.000000000000000001");
   });
 });
