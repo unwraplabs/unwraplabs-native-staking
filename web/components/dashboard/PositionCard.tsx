@@ -20,6 +20,15 @@ import { ActivitySkeleton } from "./Skeleton";
 import type { Prices } from "@/lib/prices";
 import type { PoolPosition, Subscription } from "@/lib/subscriptions";
 
+/**
+ * Kept back when staking STRK: the most that can be staked is the wallet less
+ * this. Starknet fees are paid in STRK, so staking a wallet's entire balance
+ * leaves nothing to pay for the next transaction — the unstake included. Not
+ * applied to BTC pools, whose token is never spent on fees, nor to Unstake,
+ * which draws on the pool rather than the wallet.
+ */
+const STRK_GAS_RESERVE = 2n * 10n ** 18n;
+
 /** Shared by every bordered control on the card. */
 const SECONDARY =
   "flex items-center justify-center gap-2 h-[38px] px-2.5 rounded-lg border border-card-line " +
@@ -335,11 +344,14 @@ export function PositionCard({
 
   const loadingActivity = auto && subscription && historyLoading && !history;
 
-  // The open editor. Stake is bounded by the wallet, Unstake by the stake; the
-  // hook keeps the amount in exact base units so nothing that becomes calldata
-  // ever passes through a float.
-  const limit = form === "unstake" ? (position.staked ?? 0n) : position.walletBalance;
-  const input = useAmountInput(limit, position.decimals, position.symbol === "STRK" ? 2 : 6);
+  // The open editor. Stake is bounded by the wallet (less the gas reserve for
+  // STRK), Unstake by the stake; the hook keeps the amount in exact base units
+  // so nothing that becomes calldata ever passes through a float.
+  const dp = position.symbol === "STRK" ? 2 : 6;
+  const reserve = position.kind === "strk" ? STRK_GAS_RESERVE : 0n;
+  const stakeable = position.walletBalance > reserve ? position.walletBalance - reserve : 0n;
+  const limit = form === "unstake" ? (position.staked ?? 0n) : stakeable;
+  const input = useAmountInput(limit, position.decimals, dp);
   const { parsed, malformed, tooMuch, ceiling } = input;
 
   const open = (next: "stake" | "unstake" | null) => {
@@ -360,8 +372,13 @@ export function PositionCard({
       ? { text: `Not a valid ${position.symbol} amount`, error: true }
       : form === "stake"
         ? tooMuch
-          ? { text: `More than you have — ${ceiling} ${position.symbol} in your wallet`, error: true }
-          : { text: `In your wallet ${ceiling} ${position.symbol}` }
+          ? reserve > 0n
+            ? { text: `More than you can stake — ${ceiling} ${position.symbol} after gas`, error: true }
+            : { text: `More than you have — ${ceiling} ${position.symbol} in your wallet`, error: true }
+          : // The real wallet balance, not the stakeable figure in the field.
+            {
+              text: `In your wallet ${formatUnits(position.walletBalance, position.decimals, dp)} ${position.symbol}`,
+            }
         : form === "unstake"
           ? tooMuch
             ? { text: `More than you have staked — ${ceiling} ${position.symbol}`, error: true }
@@ -477,7 +494,7 @@ export function PositionCard({
             value={input.value}
             onChange={input.set}
             balance={ceiling}
-            chip={position.walletBalance > 0n ? "MAX" : undefined}
+            chip={input.canMax ? "MAX" : undefined}
             onChip={input.max}
             invalid={malformed || tooMuch}
             canSubmit={input.valid}
@@ -512,7 +529,7 @@ export function PositionCard({
             value={input.value}
             onChange={input.set}
             balance={ceiling}
-            chip="MAX"
+            chip={input.canMax ? "MAX" : undefined}
             onChip={input.max}
             invalid={malformed || tooMuch}
             canSubmit={input.valid}

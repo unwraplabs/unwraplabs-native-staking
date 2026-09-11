@@ -44,6 +44,8 @@ export function useAmountInput(limit: bigint, decimals: number, dp: number) {
     tooMuch,
     /** A positive amount within the limit. */
     valid: parsed !== null && parsed > 0n && !tooMuch,
+    /** Whether MAX has anything to fill. */
+    canMax: limit > 0n,
     /** The limit for display, compacted or subscripted as needed. */
     ceiling: formatUnits(limit, decimals, dp),
     set: (next: string) => {
