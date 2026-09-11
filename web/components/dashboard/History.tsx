@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { CaretIcon } from "@/components/Icons";
 import { POOLS, explorerTx } from "@/lib/config";
 import { formatUnits, shortHex } from "@/lib/format";
 import type { HistoryEntry } from "@/lib/history";
@@ -15,6 +17,14 @@ const decimalsFor = (token?: string) => {
   const hit = POOLS.find((p) => p.payoutToken && BigInt(p.payoutToken) === BigInt(token));
   return hit?.decimals ?? 18;
 };
+
+/** Rows per page. Kept short so the table never pushes the page away. */
+const PAGE_SIZE = 5;
+
+const ARROW =
+  "flex h-7 w-7 items-center justify-center rounded-[4px] border border-line text-ink-2 " +
+  "transition-colors hover:border-ink hover:text-ink disabled:opacity-40 " +
+  "disabled:hover:border-line disabled:hover:text-ink-2";
 
 /**
  * Claim history, straight from the receivers' event logs. Every row links to
@@ -32,6 +42,15 @@ export function History({
       (history[s.handler] ?? []).map((e) => ({ ...e, symbol: s.symbol, handler: s.handler })),
     )
     .sort((a, b) => b.blockNumber - a.blockNumber);
+
+  // Paged in the browser: the logs are already read in full, so a page is a
+  // slice, not a request. The page is clamped rather than reset, because rows
+  // arrive per receiver as each log lands and the count can move under you.
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const start = current * PAGE_SIZE;
+  const visible = rows.slice(start, start + PAGE_SIZE);
 
   if (rows.length === 0) {
     return (
@@ -61,8 +80,8 @@ export function History({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
-              <tr key={`${r.txHash}-${i}`} className="border-b border-line-2">
+            {visible.map((r, i) => (
+              <tr key={`${r.txHash}-${start + i}`} className="border-b border-line-2">
                 <td className="mono py-2.5 pr-4 text-ink-2">{r.blockNumber || "—"}</td>
                 <td className="py-2.5 pr-4">{r.symbol}</td>
                 <td className="py-2.5 pr-4 text-ink-2">
@@ -95,6 +114,42 @@ export function History({
           </tbody>
         </table>
       </div>
+
+      {pages > 1 ? (
+        <nav
+          aria-label="Claim history pages"
+          className="mt-3 flex items-center justify-between gap-3 text-[12.5px]"
+        >
+          <span className="mono text-ink-3">
+            {start + 1}–{start + visible.length} of {rows.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(current - 1)}
+              disabled={current === 0}
+              aria-label="Previous page"
+              title="Previous page"
+              className={ARROW}
+            >
+              <span className="inline-flex rotate-180">
+                <CaretIcon />
+              </span>
+            </button>
+            <span className="mono text-ink-3" aria-live="polite">
+              {current + 1} / {pages}
+            </span>
+            <button
+              onClick={() => setPage(current + 1)}
+              disabled={current === pages - 1}
+              aria-label="Next page"
+              title="Next page"
+              className={ARROW}
+            >
+              <CaretIcon />
+            </button>
+          </div>
+        </nav>
+      ) : null}
     </div>
   );
 }

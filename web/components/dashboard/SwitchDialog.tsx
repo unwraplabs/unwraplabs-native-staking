@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useAccount } from "@starknet-react/core";
 import { TokenIcon } from "@/components/TokenIcon";
 import { useAmountInput } from "@/hooks/useAmountInput";
-import { compact, formatUnits } from "@/lib/format";
+import { formatUnits } from "@/lib/format";
 import { readPoolMember, type PoolMember, type PoolPosition } from "@/lib/subscriptions";
 import { poolsForAsset, type ValidatorPool } from "@/lib/validators";
 
@@ -34,7 +34,7 @@ export function SwitchDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    poolsForAsset({ kind: position.kind, token: position.token, decimals: position.decimals })
+    poolsForAsset({ kind: position.kind, token: position.token })
       .then(setValidators)
       .catch(() => setError("Could not load the validator list."));
   }, [position]);
@@ -104,7 +104,7 @@ export function SwitchDialog({
               <option value="">Choose a validator…</option>
               {validators.map((v) => (
                 <option key={v.pool} value={v.pool}>
-                  {v.name} — {compact(v.totalStaked, 1)} {position.symbol} delegated
+                  {v.name}
                 </option>
               ))}
             </select>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useAmountInput } from "@/hooks/useAmountInput";
 import {
   CaretIcon,
@@ -28,6 +28,13 @@ import type { PoolPosition, Subscription } from "@/lib/subscriptions";
  * which draws on the pool rather than the wallet.
  */
 const STRK_GAS_RESERVE = 2n * 10n ** 18n;
+
+/** Layout effect in the browser, plain effect during server render (where
+ *  there is no layout to measure and React would warn). */
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** Space kept between the popover and the viewport edge when choosing a side. */
+const POPOVER_MARGIN = 16;
 
 /** Shared by every bordered control on the card. */
 const SECONDARY =
@@ -308,6 +315,54 @@ export function PositionCard({
 }) {
   const [form, setForm] = useState<"stake" | "unstake" | null>(null);
   const [details, setDetails] = useState(false);
+  const detailsRef = useRef<HTMLDivElement>(null);
+  const detailsButton = useRef<HTMLButtonElement>(null);
+  const detailsId = useId();
+  const detailsPop = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<"down" | "up">("down");
+
+  // Down by default; up only when it will not fit below *and* there is more
+  // room above — the usual rule for popovers. Measured before paint, so it
+  // never flashes on the wrong side, and again on scroll and resize while open.
+  useIsoLayoutEffect(() => {
+    if (!details) return;
+    const place = () => {
+      const anchor = detailsRef.current?.getBoundingClientRect();
+      const height = detailsPop.current?.offsetHeight ?? 0;
+      if (!anchor) return;
+      const below = window.innerHeight - anchor.bottom;
+      const above = anchor.top;
+      setPlacement(below >= height + POPOVER_MARGIN || below >= above ? "down" : "up");
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [details]);
+
+  // The popover closes on a click anywhere outside it, and on Escape — which
+  // also hands focus back to the button, so a keyboard user is not dropped at
+  // the top of the page.
+  useEffect(() => {
+    if (!details) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!detailsRef.current?.contains(e.target as Node)) setDetails(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setDetails(false);
+      detailsButton.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [details]);
   const hintId = useId();
 
   const staked = stakedAmount(position);
@@ -596,13 +651,18 @@ export function PositionCard({
         </div>
       </div>
 
-      {/* The addresses and the cadence note. Collapsed by default: they are
-          what a delegator checks once and then stops looking at, and leaving
-          them open pushed the actions off the bottom of the card. */}
-      <div className="border-t border-card-hair pt-4">
+      {/* The addresses and the cadence note, in a popover. They are what a
+          delegator checks once and then stops looking at; expanding them in
+          place made this card taller than its neighbour and knocked the grid
+          out of line, so they float over the page instead. Opens downward,
+          flipping upward over the card's own actions only when the viewport
+          has no room below. */}
+      <div ref={detailsRef} className="relative border-t border-card-hair pt-4">
         <button
+          ref={detailsButton}
           onClick={() => setDetails(!details)}
           aria-expanded={details}
+          aria-controls={detailsId}
           className="flex w-full items-center gap-2 text-[13px] text-card-mute transition-colors hover:text-card-ink"
         >
           <span>Details</span>
@@ -613,7 +673,17 @@ export function PositionCard({
           </span>
         </button>
 
-        <div hidden={!details} className="flex flex-col gap-3 pt-[18px]">
+        {/* No max-height or scroll, unlike the canvas: the address tooltips
+            open upward and a scrolling container would clip the first one.
+            The content is a fixed handful of rows, well inside 280px. */}
+        <div
+          id={detailsId}
+          ref={detailsPop}
+          hidden={!details}
+          className={`absolute -inset-x-2 z-20 flex flex-col gap-3 rounded-lg border border-card-edge bg-white p-[18px] shadow-[0_12px_32px_rgba(24,24,27,0.12)] ${
+            placement === "down" ? "top-[calc(100%+10px)]" : "bottom-[calc(100%+10px)]"
+          }`}
+        >
           {auto && subscription ? (
             <>
               <AddressRow

@@ -7,10 +7,17 @@
  * (validator, asset) -> pool, which is the shape the switch call needs.
  */
 import { VALIDATOR } from "./config";
-import { sameAddress } from "./format";
+import { sameAddress, shortHex } from "./format";
 
-const API =
-  "https://api.dashboard.endur.fi/api/query/validators?page=1&per_page=400&sort_by=total_stake&sort_order=desc";
+const BASE = "https://api.dashboard.endur.fi/api";
+const API = `${BASE}/query/validators?page=1&per_page=400&sort_by=total_stake&sort_order=desc`;
+/**
+ * Curated names and logos. Many validators have no `name` in the directory at
+ * all — Karnot, Braavos, Nethermind among them — and the Endur dashboard fills
+ * them from here, preferring it over the directory. Without it they show as a
+ * bare address.
+ */
+const WHITELIST = `${BASE}/validators/whitelist`;
 
 export type ValidatorPool = {
   name: string;
@@ -18,8 +25,6 @@ export type ValidatorPool = {
   staker: string;
   /** That staker's delegation pool for this asset — `to_pool`. */
   pool: string;
-  /** Total delegated to this pool, in the asset's own units. */
-  totalStaked: number;
   logo: string | null;
 };
 
@@ -40,15 +45,37 @@ type RawValidator = {
   btc_tokens_info?: RawBtcToken[];
 };
 
+type Listed = { address: string; name: string | null; logo: string | null };
+
 let cache: RawValidator[] | null = null;
+
+/** Names and logos by address. Best-effort: a failure costs names, not the list. */
+async function whitelist(): Promise<Map<string, Listed>> {
+  try {
+    const res = await fetch(WHITELIST, { cache: "no-store" });
+    if (!res.ok) return new Map();
+    const { validators } = (await res.json()) as { validators: Listed[] };
+    return new Map(validators.map((v) => [BigInt(v.address).toString(), v]));
+  } catch {
+    return new Map();
+  }
+}
 
 async function directory(): Promise<RawValidator[]> {
   if (cache) return cache;
-  const res = await fetch(API, { cache: "no-store" });
+  const [res, listed] = await Promise.all([fetch(API, { cache: "no-store" }), whitelist()]);
   if (!res.ok) throw new Error(`validator directory ${res.status}`);
   const { validators } = (await res.json()) as { validators: RawValidator[] };
-  cache = validators;
-  return validators;
+  // Same precedence as the dashboard: the whitelist's name and logo win.
+  cache = validators.map((v) => {
+    const hit = listed.get(BigInt(v.address).toString());
+    return {
+      ...v,
+      name: hit?.name || v.name,
+      logo: hit?.logo || v.logo,
+    };
+  });
+  return cache;
 }
 
 /**
@@ -56,13 +83,19 @@ async function directory(): Promise<RawValidator[]> {
  *
  * Ourselves excluded — the pool contract rejects a switch to the pool you are
  * already in, so offering it would only produce a confusing revert.
+ *
+ * Ordered by each validator's overall `total_stake`, largest first — the same
+ * order the Endur dashboard's own switch flow uses, and the order the API
+ * already returns. Deliberately *not* by stake in this particular asset: that
+ * reshuffled the list per token and made it disagree with the dashboard.
  */
 export async function poolsForAsset(args: {
   kind: "strk" | "btc";
   token: string;
-  decimals: number;
 }): Promise<ValidatorPool[]> {
-  const validators = await directory();
+  const validators = [...(await directory())].sort(
+    (a, b) => Number(b.total_stake) - Number(a.total_stake),
+  );
   const out: ValidatorPool[] = [];
 
   for (const v of validators) {
@@ -72,10 +105,9 @@ export async function poolsForAsset(args: {
     if (args.kind === "strk") {
       if (!v.pool_address) continue;
       out.push({
-        name: v.name || `${v.address.slice(0, 10)}…`,
+        name: v.name || shortHex(v.address),
         staker: v.address,
         pool: v.pool_address,
-        totalStaked: Number(v.total_stake) / 10 ** args.decimals,
         logo: v.logo,
       });
       continue;
@@ -86,13 +118,12 @@ export async function poolsForAsset(args: {
     const entry = v.btc_tokens_info?.find((t) => sameAddress(t.address, args.token));
     if (!entry?.pool_address) continue;
     out.push({
-      name: v.name || `${v.address.slice(0, 10)}…`,
+      name: v.name || shortHex(v.address),
       staker: v.address,
       pool: entry.pool_address,
-      totalStaked: Number(entry.total_staked) / 10 ** args.decimals,
       logo: v.logo,
     });
   }
 
-  return out.sort((a, b) => b.totalStaked - a.totalStaked);
+  return out;
 }
