@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useAmountInput } from "@/hooks/useAmountInput";
 import {
   CaretIcon,
   ClaimIcon,
@@ -12,16 +13,7 @@ import {
 import { TokenIcon } from "@/components/TokenIcon";
 import { Tooltip } from "@/components/Tooltip";
 import { explorerContract, explorerTx } from "@/lib/config";
-import {
-  exactUnits,
-  formatUnits,
-  fromUnits,
-  num,
-  parseUnits,
-  shortHex,
-  unitsToInput,
-  usd,
-} from "@/lib/format";
+import { exactUnits, formatUnits, fromUnits, num, shortHex, usd } from "@/lib/format";
 import { serviceTier, stakedAmount, stakedUsd } from "@/lib/positions";
 import { summarise, type HistoryEntry } from "@/lib/history";
 import { ActivitySkeleton } from "./Skeleton";
@@ -306,11 +298,6 @@ export function PositionCard({
   onSwitch: () => void;
 }) {
   const [form, setForm] = useState<"stake" | "unstake" | null>(null);
-  const [amount, setAmount] = useState("");
-  // Set by the MAX chip and cleared by any keystroke. While set, submit sends
-  // the exact on-chain balance rather than the truncated figure shown in the
-  // field — otherwise unstaking everything would leave a few wei of dust.
-  const [whole, setWhole] = useState(false);
   const [details, setDetails] = useState(false);
   const hintId = useId();
 
@@ -348,32 +335,19 @@ export function PositionCard({
 
   const loadingActivity = auto && subscription && historyLoading && !history;
 
-  // The open editor, in exact base units throughout. Floats are only ever used
-  // for display above; nothing that becomes calldata passes through one.
+  // The open editor. Stake is bounded by the wallet, Unstake by the stake; the
+  // hook keeps the amount in exact base units so nothing that becomes calldata
+  // ever passes through a float.
   const limit = form === "unstake" ? (position.staked ?? 0n) : position.walletBalance;
-  const dp = position.symbol === "STRK" ? 2 : 6;
-  // What MAX puts in the field: plain digits, since a subscript would not parse
-  // back. Normally truncated to dp; but a balance too small to survive that
-  // (0.0004 STRK at 2dp is "0.00") goes in whole, or the field would read zero.
-  const truncated = unitsToInput(limit, position.decimals, dp);
-  const fill =
-    limit > 0n && parseUnits(truncated, position.decimals) === 0n
-      ? exactUnits(limit, position.decimals)
-      : truncated;
-  // What the field and hint show as the ceiling.
-  const ceiling = formatUnits(limit, position.decimals, dp);
-  const parsed = whole ? limit : parseUnits(amount, position.decimals);
-  const malformed = amount.trim() !== "" && parsed === null;
-  const tooMuch = parsed !== null && parsed > limit;
-  const canSubmit = parsed !== null && parsed > 0n && !tooMuch;
+  const input = useAmountInput(limit, position.decimals, position.symbol === "STRK" ? 2 : 6);
+  const { parsed, malformed, tooMuch, ceiling } = input;
 
   const open = (next: "stake" | "unstake" | null) => {
     setForm(next);
-    setAmount("");
-    setWhole(false);
+    input.reset();
   };
   const submit = () => {
-    if (!canSubmit || parsed === null) return;
+    if (!input.valid || parsed === null) return;
     if (form === "stake") onStake(parsed);
     if (form === "unstake") onUnstake(parsed);
     open(null);
@@ -500,19 +474,13 @@ export function PositionCard({
             size="lg"
             action="Stake"
             symbol={position.symbol}
-            value={amount}
-            onChange={(v) => {
-              setAmount(v);
-              setWhole(false);
-            }}
+            value={input.value}
+            onChange={input.set}
             balance={ceiling}
             chip={position.walletBalance > 0n ? "MAX" : undefined}
-            onChip={() => {
-              setAmount(fill);
-              setWhole(true);
-            }}
+            onChip={input.max}
             invalid={malformed || tooMuch}
-            canSubmit={canSubmit}
+            canSubmit={input.valid}
             busy={busy}
             hintId={hintId}
             onSubmit={submit}
@@ -541,19 +509,13 @@ export function PositionCard({
             size="sm"
             action="Unstake"
             symbol={position.symbol}
-            value={amount}
-            onChange={(v) => {
-              setAmount(v);
-              setWhole(false);
-            }}
+            value={input.value}
+            onChange={input.set}
             balance={ceiling}
             chip="MAX"
-            onChip={() => {
-              setAmount(fill);
-              setWhole(true);
-            }}
+            onChip={input.max}
             invalid={malformed || tooMuch}
-            canSubmit={canSubmit}
+            canSubmit={input.valid}
             busy={busy}
             hintId={hintId}
             onSubmit={submit}

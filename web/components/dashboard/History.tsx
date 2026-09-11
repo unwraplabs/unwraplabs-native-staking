@@ -1,7 +1,7 @@
 "use client";
 
 import { POOLS, explorerTx } from "@/lib/config";
-import { fromUnits, num, shortHex } from "@/lib/format";
+import { formatUnits, shortHex } from "@/lib/format";
 import type { HistoryEntry } from "@/lib/history";
 import type { Subscription } from "@/lib/subscriptions";
 
@@ -73,11 +73,11 @@ export function History({
                       : "Swept"}
                 </td>
                 <td className="mono py-2.5 pr-4 text-right">
-                  {r.amountIn !== undefined ? `${num(fromUnits(r.amountIn, 18), 2)} STRK` : "—"}
+                  {r.amountIn !== undefined ? `${formatUnits(r.amountIn, 18)} STRK` : "—"}
                 </td>
                 <td className="mono py-2.5 pr-4 text-right font-medium">
                   {r.amountOut !== undefined
-                    ? `${num(fromUnits(r.amountOut, decimalsFor(r.token)), symbolFor(r.token) === "STRK" ? 2 : 6)} ${symbolFor(r.token)}`
+                    ? `${formatUnits(r.amountOut, decimalsFor(r.token), symbolFor(r.token) === "STRK" ? 2 : 6)} ${symbolFor(r.token)}`
                     : "—"}
                 </td>
                 <td className="py-2.5 text-right">

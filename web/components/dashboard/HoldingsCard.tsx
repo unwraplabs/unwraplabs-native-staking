@@ -2,8 +2,8 @@
 
 import { Tooltip } from "@/components/Tooltip";
 import { explorerContract } from "@/lib/config";
-import { num, shortHex, usd } from "@/lib/format";
-import type { Holdings } from "@/lib/holdings";
+import { exactUnits, formatUnits, shortHex, usd } from "@/lib/format";
+import { HOLDINGS_DECIMALS, type Holdings } from "@/lib/holdings";
 import type { Prices } from "@/lib/prices";
 
 /**
@@ -49,13 +49,13 @@ function Row({
         </a>
       </div>
       <div className="mono mt-1 flex flex-wrap items-baseline gap-x-2.5 text-[13px]">
-        <span>
-          {num(holdings.strk, 2)}
+        <span title={`${exactUnits(holdings.strkUnits, HOLDINGS_DECIMALS)} STRK`}>
+          {formatUnits(holdings.strkUnits, HOLDINGS_DECIMALS)}
           <span className="ml-1 text-[11px] text-ink-3">STRK</span>
         </span>
         <span className="text-ink-3">·</span>
-        <span>
-          {num(holdings.btc, 6)}
+        <span title={`${exactUnits(holdings.btcUnits, HOLDINGS_DECIMALS)} BTC`}>
+          {formatUnits(holdings.btcUnits, HOLDINGS_DECIMALS, 6)}
           <span className="ml-1 text-[11px] text-ink-3">BTC</span>
         </span>
         {value !== null ? <span className="text-[11.5px] text-ink-3">≈ {usd(value)}</span> : null}

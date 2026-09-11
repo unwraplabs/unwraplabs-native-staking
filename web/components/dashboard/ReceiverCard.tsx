@@ -1,7 +1,7 @@
 "use client";
 
 import { config, explorerClass, explorerContract } from "@/lib/config";
-import { fromUnits, num, shortHex } from "@/lib/format";
+import { formatUnits, shortHex } from "@/lib/format";
 import { totalsByToken, type HistoryEntry } from "@/lib/history";
 import { POOLS } from "@/lib/config";
 import type { Subscription } from "@/lib/subscriptions";
@@ -66,7 +66,7 @@ export function ReceiverCard({
           <div className="mt-1.5 flex flex-wrap gap-x-6 gap-y-1">
             {paid.map(([token, amount]) => (
               <span key={token} className="mono text-[17px] font-medium tracking-[-0.03em]">
-                {num(fromUnits(amount, decimalsFor(token)), symbolFor(token) === "STRK" ? 2 : 6)}
+                {formatUnits(amount, decimalsFor(token), symbolFor(token) === "STRK" ? 2 : 6)}
                 <span className="ml-1.5 text-[12px] tracking-normal text-ink-2">
                   {symbolFor(token)}
                 </span>
@@ -91,7 +91,7 @@ export function ReceiverCard({
         <Row label="Max slippage">1.00%</Row>
         <Row label="Price floor">Pragma median</Row>
         {subscription.held > 0n ? (
-          <Row label="Holding">{num(fromUnits(subscription.held, 18), 2)} STRK</Row>
+          <Row label="Holding">{formatUnits(subscription.held, 18)} STRK</Row>
         ) : null}
         {config.deployed.handlerClassHash ? (
           <Row label="Class hash">

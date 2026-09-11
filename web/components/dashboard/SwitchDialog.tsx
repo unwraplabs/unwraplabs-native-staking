@@ -1,10 +1,11 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "@starknet-react/core";
 import { TokenIcon } from "@/components/TokenIcon";
-import { compact, fromUnits, num } from "@/lib/format";
+import { useAmountInput } from "@/hooks/useAmountInput";
+import { compact, formatUnits } from "@/lib/format";
 import { readPoolMember, type PoolMember, type PoolPosition } from "@/lib/subscriptions";
 import { poolsForAsset, type ValidatorPool } from "@/lib/validators";
 
@@ -30,7 +31,6 @@ export function SwitchDialog({
   const [validators, setValidators] = useState<ValidatorPool[] | null>(null);
   const [selected, setSelected] = useState<ValidatorPool | null>(null);
   const [there, setThere] = useState<PoolMember | null | "loading">(null);
-  const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,30 +41,26 @@ export function SwitchDialog({
 
   // Their position at the chosen validator is the whole basis for the amount
   // field, so it is read as soon as one is picked rather than on submit.
+  // Anything already signalled for exit can still move, so it counts.
+  const total = there && there !== "loading" ? there.amount + there.unpoolAmount : 0n;
+  const dp = position.symbol === "STRK" ? 2 : 6;
+  const input = useAmountInput(total, position.decimals, dp);
+  const { reset } = input;
+
   useEffect(() => {
     if (!selected || !address) return;
     setThere("loading");
-    setValue("");
+    reset();
     readPoolMember(selected.pool, address)
       .then(setThere)
       .catch(() => setThere(null));
-  }, [selected, address]);
+  }, [selected, address, reset]);
 
-  const available = useMemo(() => {
-    if (!there || there === "loading") return 0;
-    // Anything already signalled for exit can still move, so it counts.
-    return fromUnits(there.amount + there.unpoolAmount, position.decimals);
-  }, [there, position.decimals]);
-
-  const dp = position.symbol === "STRK" ? 2 : 6;
-  const entered = Number(value);
-  const overAvailable = Number.isFinite(entered) && entered > available;
-  const canSubmit =
-    selected && there && there !== "loading" && entered > 0 && !overAvailable && !busy;
+  const canSubmit = selected && there && there !== "loading" && input.valid && !busy;
 
   const submit = () => {
-    if (!canSubmit || !selected) return;
-    onConfirm(selected, BigInt(entered.toFixed(position.decimals).replace(".", "")));
+    if (!canSubmit || !selected || input.parsed === null) return;
+    onConfirm(selected, input.parsed);
   };
 
   return (
@@ -130,14 +126,14 @@ export function SwitchDialog({
                     Your stake at {selected.name}
                   </span>
                   <span className="mono text-[15px] font-medium">
-                    {num(fromUnits(there.amount, position.decimals), dp)} {position.symbol}
+                    {formatUnits(there.amount, position.decimals, dp)} {position.symbol}
                   </span>
                 </div>
                 {there.unpoolAmount > 0n ? (
                   <div className="mt-1 flex items-baseline justify-between gap-4">
                     <span className="text-[12.5px] text-ink-3">Already exiting there</span>
                     <span className="mono text-[13px]">
-                      {num(fromUnits(there.unpoolAmount, position.decimals), dp)}{" "}
+                      {formatUnits(there.unpoolAmount, position.decimals, dp)}{" "}
                       {position.symbol}
                     </span>
                   </div>
@@ -147,24 +143,24 @@ export function SwitchDialog({
           </div>
         ) : null}
 
-        {there && there !== "loading" && available > 0 ? (
+        {there && there !== "loading" && total > 0n ? (
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-[13px] text-ink-2">Amount to switch</label>
               <input
                 inputMode="decimal"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
+                value={input.value}
+                onChange={(e) => input.set(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
                 placeholder="0.00"
-                aria-invalid={overAvailable}
+                aria-invalid={input.tooMuch || input.malformed}
                 className={`mono w-36 border px-2 py-1.5 text-[13.5px] focus:outline-none ${
-                  overAvailable ? "border-btc" : "border-line focus:border-ink"
+                  input.tooMuch || input.malformed ? "border-btc" : "border-line focus:border-ink"
                 }`}
               />
               <span className="mono text-[12px] text-ink-3">{position.symbol}</span>
               <button
-                onClick={() => setValue(String(available))}
+                onClick={input.max}
                 className="mono text-[12px] text-ink-2 underline transition-colors hover:text-ink"
               >
                 Max
@@ -173,10 +169,12 @@ export function SwitchDialog({
             <p className="mt-2 text-[12.5px] text-ink-3">
               Available to switch{" "}
               <span className="mono text-ink-2">
-                {num(available, dp)} {position.symbol}
+                {input.ceiling} {position.symbol}
               </span>
-              {overAvailable ? (
+              {input.tooMuch ? (
                 <span className="ml-2 text-btc">More than you have there</span>
+              ) : input.malformed ? (
+                <span className="ml-2 text-btc">Not a valid {position.symbol} amount</span>
               ) : null}
             </p>
           </div>
