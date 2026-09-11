@@ -17,6 +17,36 @@ export function fromUnits(raw: bigint | string | number, decimals: number): numb
 }
 
 /** The API returns some totals in scientific notation as strings. */
+/**
+ * Parses a typed decimal amount straight to base units, with no float in
+ * between. Returns null for anything that is not a plain non-negative decimal,
+ * or that carries more fractional digits than the token has.
+ *
+ * Going through `Number` here is not a rounding nicety: an 18-decimal balance
+ * round-tripped through a double can come back *larger* than it went in, and a
+ * transaction for more than you hold reverts.
+ */
+export function parseUnits(input: string, decimals: number): bigint | null {
+  const s = input.trim();
+  if (!/^\d*\.?\d*$/.test(s) || s === "" || s === ".") return null;
+  const [whole, frac = ""] = s.split(".");
+  if (frac.length > decimals) return null;
+  return BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt(frac.padEnd(decimals, "0") || "0");
+}
+
+/**
+ * Base units as a plain decimal string for an input field: no grouping (a comma
+ * would not parse back), and truncated rather than rounded, so it never shows
+ * more than is actually there.
+ */
+export function unitsToInput(raw: bigint, decimals: number, dp: number): string {
+  const base = 10n ** BigInt(decimals);
+  const whole = (raw / base).toString();
+  if (dp === 0) return whole;
+  const frac = (raw % base).toString().padStart(decimals, "0").slice(0, dp).padEnd(dp, "0");
+  return `${whole}.${frac}`;
+}
+
 export function fromUnitsLoose(raw: string | number, decimals: number): number {
   return Number(raw) / 10 ** decimals;
 }

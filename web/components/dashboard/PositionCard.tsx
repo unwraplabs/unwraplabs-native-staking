@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { CaretIcon, ClaimIcon, StakeIcon, SwitchIcon, UnstakeIcon } from "@/components/Icons";
+import { useId, useState } from "react";
+import {
+  CaretIcon,
+  ClaimIcon,
+  CloseIcon,
+  StakeIcon,
+  SwitchIcon,
+  UnstakeIcon,
+} from "@/components/Icons";
 import { TokenIcon } from "@/components/TokenIcon";
 import { Tooltip } from "@/components/Tooltip";
 import { explorerContract, explorerTx } from "@/lib/config";
-import { fromUnits, num, shortHex, usd } from "@/lib/format";
+import { fromUnits, num, parseUnits, shortHex, unitsToInput, usd } from "@/lib/format";
 import { serviceTier, stakedAmount, stakedUsd } from "@/lib/positions";
 import { summarise, type HistoryEntry } from "@/lib/history";
 import { ActivitySkeleton } from "./Skeleton";
@@ -112,95 +119,111 @@ function AutoClaimSwitch({
   );
 }
 
-/** Amount entry that converts to base units on submit. */
-function AmountForm({
+/**
+ * Inline amount entry. Replaces its own trigger button in place rather than
+ * opening a panel under the card, so the field appears exactly where the
+ * delegator's eye already is.
+ *
+ * Controlled by the card: the card owns the value because the hint line that
+ * explains it (balance, or what is wrong) sits below the whole action stack.
+ */
+function AmountEditor({
+  size,
   action,
   symbol,
-  decimals,
-  available,
-  availableLabel,
+  value,
+  onChange,
+  balance,
+  chip,
+  onChip,
+  invalid,
+  canSubmit,
   busy,
+  hintId,
   onSubmit,
   onCancel,
 }: {
+  /** `lg` stands in for the 44px Stake button, `sm` for the 38px row. */
+  size: "lg" | "sm";
   action: "Stake" | "Unstake";
   symbol: string;
-  decimals: number;
-  /** How much can go into this action: wallet balance, or the staked amount. */
-  available: number;
-  availableLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** What can go in, shown in the field as "/ 7.17" so the ceiling is visible
+   *  while typing rather than only after going over it. */
+  balance: string;
+  /** Chip label, e.g. "MAX". Omitted when there is nothing to fill in. */
+  chip?: string;
+  onChip: () => void;
+  invalid: boolean;
+  canSubmit: boolean;
   busy: boolean;
-  onSubmit: (amount: bigint) => void;
+  hintId: string;
+  onSubmit: () => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState("");
-  const entered = Number(value);
-  const overAvailable = Number.isFinite(entered) && entered > available;
-
-  const submit = () => {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > available) return;
-    // Round through a fixed-decimal string so floating point never introduces a
-    // trailing fraction of a base unit.
-    onSubmit(BigInt(parsed.toFixed(decimals).replace(".", "")));
-  };
-
-  const dp = symbol === "STRK" ? 2 : 6;
-
+  const lg = size === "lg";
   return (
-    <div className="rounded-lg border border-card-line p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-[13px] text-card-mute">
-          {action} amount
-          <span className="sr-only"> in {symbol}</span>
-        </label>
+    <div className={`flex items-stretch gap-2 ${lg ? "h-11" : "h-[38px]"}`}>
+      <div
+        className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border pl-3 pr-1 ${
+          invalid ? "border-btc" : "border-card-ink"
+        }`}
+      >
         <input
           autoFocus
           inputMode="decimal"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && canSubmit) onSubmit();
+            if (e.key === "Escape") onCancel();
+          }}
           placeholder="0.00"
-          aria-invalid={overAvailable}
-          className={`mono w-32 rounded-lg border px-2 py-1.5 text-[13.5px] focus:outline-none ${
-            overAvailable ? "border-btc" : "border-card-line focus:border-card-ink"
+          aria-label={`${action} amount in ${symbol}`}
+          aria-invalid={invalid}
+          aria-describedby={hintId}
+          className={`tnum min-w-0 flex-1 bg-transparent font-medium text-card-ink outline-none placeholder:text-card-dim ${
+            lg ? "text-[15px]" : "text-[14px]"
           }`}
         />
-        <span className="mono text-[12px] text-card-mute">{symbol}</span>
-        <button
-          onClick={submit}
-          disabled={busy || overAvailable}
-          className="rounded-lg bg-card-ink px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
-        >
-          {busy ? "Working…" : action}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-2 text-[13px] text-card-mute transition-colors hover:text-card-ink"
-        >
-          Cancel
-        </button>
-      </div>
-
-      {/* What you can actually put in. Without this the field is a guess, and
-          the transaction fails at the wallet rather than here. */}
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
-        <span className="text-card-mute">
-          {availableLabel}{" "}
-          <span className="mono text-card-ink">
-            {num(available, dp)} {symbol}
-          </span>
+        <span className="mono flex-none text-[12.5px] text-card-mute" aria-hidden>
+          / {balance}
         </span>
-        {available > 0 ? (
+        {chip ? (
           <button
-            onClick={() => setValue(String(available))}
-            className="mono text-[12px] text-card-mute underline transition-colors hover:text-card-ink"
+            onClick={onChip}
+            className={`flex-none rounded-md bg-card-tint px-2 text-[11px] font-medium tracking-[0.04em] text-card-ink/80 transition-colors hover:bg-card-line hover:text-card-ink ${
+              lg ? "py-[5px]" : "py-1"
+            }`}
           >
-            Max
+            {chip}
           </button>
         ) : null}
-        {overAvailable ? <span className="text-btc">More than you have available</span> : null}
       </div>
+
+      <button
+        onClick={onSubmit}
+        disabled={!canSubmit || busy}
+        className={`flex-none rounded-lg border border-card-ink font-medium transition-colors disabled:opacity-40 ${
+          lg
+            ? "bg-card-ink px-[18px] text-[14px] text-white hover:bg-neutral-700"
+            : "bg-white px-4 text-[13.5px] text-card-ink hover:bg-card-tint"
+        }`}
+      >
+        {busy ? "Working…" : action}
+      </button>
+
+      <button
+        onClick={onCancel}
+        aria-label="Cancel"
+        title="Cancel"
+        className={`flex flex-none items-center justify-center rounded-lg border border-card-line bg-white text-card-mute transition-colors hover:border-card-edge hover:bg-card-tint hover:text-card-ink ${
+          lg ? "w-11" : "w-[38px]"
+        }`}
+      >
+        <CloseIcon />
+      </button>
     </div>
   );
 }
@@ -266,16 +289,23 @@ export function PositionCard({
   onSwitch: () => void;
 }) {
   const [form, setForm] = useState<"stake" | "unstake" | null>(null);
+  const [amount, setAmount] = useState("");
+  // Set by the MAX chip and cleared by any keystroke. While set, submit sends
+  // the exact on-chain balance rather than the truncated figure shown in the
+  // field — otherwise unstaking everything would leave a few wei of dust.
+  const [whole, setWhole] = useState(false);
   const [details, setDetails] = useState(false);
+  const hintId = useId();
 
   const staked = stakedAmount(position);
   const walletBalance = fromUnits(position.walletBalance, position.decimals);
   const value = stakedUsd(position, prices);
   const unclaimed = position.unclaimed ? fromUnits(position.unclaimed, 18) : 0;
   const auto = subscription?.active ?? false;
-  // Nothing staked in this pool. Every control that acts on a position is
-  // meaningless in that state, so they all go dead — except Stake, which is
-  // the way out of it.
+  // Nothing staked in this pool. Every control that acts on a position here is
+  // meaningless in that state, so they go dead. Stake and Switch stay live:
+  // both bring stake *in*, and an empty pool is exactly where a delegator
+  // moving over from another validator starts.
   //
   // TODO: check if accounts close after positions close / verify how it works.
   // If the pool drops a member on full exit, `staked === 0` and "never joined"
@@ -300,6 +330,45 @@ export function PositionCard({
   const paidOutDecimals = swapsToBtc ? position.decimals : 18;
 
   const loadingActivity = auto && subscription && historyLoading && !history;
+
+  // The open editor, in exact base units throughout. Floats are only ever used
+  // for display above; nothing that becomes calldata passes through one.
+  const limit = form === "unstake" ? (position.staked ?? 0n) : position.walletBalance;
+  const dp = position.symbol === "STRK" ? 2 : 6;
+  const shown = unitsToInput(limit, position.decimals, dp);
+  const parsed = whole ? limit : parseUnits(amount, position.decimals);
+  const malformed = amount.trim() !== "" && parsed === null;
+  const tooMuch = parsed !== null && parsed > limit;
+  const canSubmit = parsed !== null && parsed > 0n && !tooMuch;
+
+  const open = (next: "stake" | "unstake" | null) => {
+    setForm(next);
+    setAmount("");
+    setWhole(false);
+  };
+  const submit = () => {
+    if (!canSubmit || parsed === null) return;
+    if (form === "stake") onStake(parsed);
+    if (form === "unstake") onUnstake(parsed);
+    open(null);
+  };
+
+  // One line under the whole stack. Reserved even when empty, so opening an
+  // editor never shifts the Details rule below it.
+  const hint: { text: string; error?: boolean } | null =
+    form !== null && malformed
+      ? { text: `Not a valid ${position.symbol} amount`, error: true }
+      : form === "stake"
+        ? tooMuch
+          ? { text: `More than you have — ${shown} ${position.symbol} in your wallet`, error: true }
+          : { text: `In your wallet ${shown} ${position.symbol}` }
+        : form === "unstake"
+          ? tooMuch
+            ? { text: `More than you have staked — ${shown} ${position.symbol}`, error: true }
+            : { text: "Unstaking stops rewards on that amount" }
+          : empty
+            ? { text: "Nothing staked yet" }
+            : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-[26px] rounded-lg border border-card-line bg-white p-7 text-card-ink">
@@ -397,96 +466,128 @@ export function PositionCard({
         ) : null}
       </div>
 
-      <div className="mt-auto flex flex-col gap-4">
+      <div className="mt-auto flex flex-col gap-3">
+        {form === "stake" ? (
+          <AmountEditor
+            size="lg"
+            action="Stake"
+            symbol={position.symbol}
+            value={amount}
+            onChange={(v) => {
+              setAmount(v);
+              setWhole(false);
+            }}
+            balance={shown}
+            chip={position.walletBalance > 0n ? "MAX" : undefined}
+            onChip={() => {
+              setAmount(shown);
+              setWhole(true);
+            }}
+            invalid={malformed || tooMuch}
+            canSubmit={canSubmit}
+            busy={busy}
+            hintId={hintId}
+            onSubmit={submit}
+            onCancel={() => open(null)}
+          />
+        ) : (
+          <button
+            onClick={() => open("stake")}
+            // Never disabled. Stake is the one way out of an empty position, so
+            // it stays live even with an empty wallet — the editor then says
+            // what the balance actually is, which a greyed-out button never could.
+            title={
+              walletBalance === 0 ? `No ${position.symbol} in this wallet yet` : undefined
+            }
+            className={`flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-card-ink text-[14px] font-medium text-white transition-[background-color,opacity] hover:bg-neutral-700 ${
+              form === "unstake" ? "opacity-40" : ""
+            }`}
+          >
+            <StakeIcon />
+            Stake
+          </button>
+        )}
+
+        {form === "unstake" ? (
+          <AmountEditor
+            size="sm"
+            action="Unstake"
+            symbol={position.symbol}
+            value={amount}
+            onChange={(v) => {
+              setAmount(v);
+              setWhole(false);
+            }}
+            balance={shown}
+            chip="MAX"
+            onChip={() => {
+              setAmount(shown);
+              setWhole(true);
+            }}
+            invalid={malformed || tooMuch}
+            canSubmit={canSubmit}
+            busy={busy}
+            hintId={hintId}
+            onSubmit={submit}
+            onCancel={() => open(null)}
+          />
+        ) : (
+          <div
+            className={`grid grid-cols-2 gap-2.5 transition-opacity ${
+              form === "stake" ? "opacity-40" : ""
+            }`}
+          >
+            <button
+              onClick={() => open("unstake")}
+              disabled={empty}
+              title={empty ? `Nothing staked to unstake` : undefined}
+              className={SECONDARY}
+            >
+              <UnstakeIcon />
+              Unstake
+            </button>
+            <button
+              onClick={onClaim}
+              disabled={busy || empty || unclaimed === 0}
+              title={
+                busy
+                  ? "Waiting on the transaction you just sent"
+                  : empty
+                    ? `Stake ${position.symbol} first — there is nothing here to claim from yet`
+                    : unclaimed === 0
+                      ? "No rewards have accrued yet"
+                      : undefined
+              }
+              className={SECONDARY}
+            >
+              <ClaimIcon />
+              {auto ? "Claim now" : "Claim rewards"}
+            </button>
+          </div>
+        )}
+
         <button
-          onClick={() => setForm(form === "stake" ? null : "stake")}
-          // Never disabled. Stake is the one way out of an empty position, so
-          // it stays live even with an empty wallet — the form then says what
-          // the balance actually is, which a greyed-out button never could.
+          onClick={onSwitch}
+          disabled={busy}
           title={
-            walletBalance === 0 ? `No ${position.symbol} in this wallet yet` : undefined
+            busy
+              ? "Waiting on the transaction you just sent"
+              : `Move ${position.symbol} here from another validator, in one transaction`
           }
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-card-ink text-[14px] font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+          className={SECONDARY}
         >
-          <StakeIcon />
-          Stake
+          <SwitchIcon />
+          Switch here
         </button>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <button
-            onClick={() => setForm(form === "unstake" ? null : "unstake")}
-            disabled={empty}
-            title={empty ? `Nothing staked to unstake` : undefined}
-            className={SECONDARY}
-          >
-            <UnstakeIcon />
-            Unstake
-          </button>
-          <button
-            onClick={onClaim}
-            disabled={busy || empty || unclaimed === 0}
-            title={
-              busy
-                ? "Waiting on the transaction you just sent"
-                : empty
-                  ? `Stake ${position.symbol} first — there is nothing here to claim from yet`
-                  : unclaimed === 0
-                    ? "No rewards have accrued yet"
-                    : undefined
-            }
-            className={SECONDARY}
-          >
-            <ClaimIcon />
-            {auto ? "Claim now" : "Claim rewards"}
-          </button>
-          <button
-            onClick={onSwitch}
-            disabled={busy || empty}
-            title={
-              busy
-                ? "Waiting on the transaction you just sent"
-                : empty
-                  ? `Stake ${position.symbol} first, then move more here from another validator`
-                  : `Move ${position.symbol} here from another validator, in one transaction`
-            }
-            className={`${SECONDARY} col-span-2`}
-          >
-            <SwitchIcon />
-            Switch here
-          </button>
+        <div
+          id={hintId}
+          aria-live="polite"
+          className={`min-h-[18px] text-[12px] ${hint?.error ? "text-btc" : "text-card-mute"}`}
+        >
+          {hint?.text}
         </div>
       </div>
-
-      {form === "stake" ? (
-        <AmountForm
-          action="Stake"
-          symbol={position.symbol}
-          decimals={position.decimals}
-          available={walletBalance}
-          availableLabel="In your wallet:"
-          busy={busy}
-          onSubmit={(a) => {
-            onStake(a);
-            setForm(null);
-          }}
-          onCancel={() => setForm(null)}
-        />
-      ) : null}
-      {form === "unstake" ? (
-        <AmountForm
-          action="Unstake"
-          symbol={position.symbol}
-          decimals={position.decimals}
-          available={staked}
-          availableLabel="Currently staked:"
-          busy={busy}
-          onSubmit={(a) => {
-            onUnstake(a);
-            setForm(null);
-          }}
-          onCancel={() => setForm(null)}
-        />
-      ) : null}
 
       {/* The addresses and the cadence note. Collapsed by default: they are
           what a delegator checks once and then stops looking at, and leaving

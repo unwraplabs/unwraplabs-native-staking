@@ -46,15 +46,15 @@ export function PositionSkeleton() {
         <Bar w="104px" h={14} />
       </div>
 
-      <div className="mt-auto flex flex-col gap-4">
+      <div className="mt-auto flex flex-col gap-3">
         <Bar w="100%" h={44} />
         <div className="grid grid-cols-2 gap-2.5">
           <Bar w="100%" h={38} />
           <Bar w="100%" h={38} />
-          <span className="col-span-2">
-            <Bar w="100%" h={38} />
-          </span>
         </div>
+        <Bar w="100%" h={38} />
+        {/* The card's hint line, which is reserved even when empty. */}
+        <span className="block h-[18px]" />
       </div>
 
       <div className="border-t border-card-hair pt-4">

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { compact, fromUnits, normalizeAddress, num, sameAddress, shortHex } from "@/lib/format";
+import {
+  compact,
+  fromUnits,
+  normalizeAddress,
+  num,
+  parseUnits,
+  sameAddress,
+  shortHex,
+  unitsToInput,
+} from "@/lib/format";
 
 describe("fromUnits", () => {
   it("scales by token decimals", () => {
@@ -56,5 +65,41 @@ describe("num", () => {
   it("formats with fixed decimals for tabular alignment", () => {
     expect(num(100, 2)).toBe("100.00");
     expect(num(0, 0)).toBe("0");
+  });
+});
+
+describe("parseUnits", () => {
+  it("parses exactly, with no float in between", () => {
+    // A real 18-decimal balance. Via Number and toFixed this comes back as
+    // ...901403 — more than the wallet holds, so a MAX stake would revert.
+    expect(parseUnits("7.173412345678901234", 18)).toBe(7_173_412_345_678_901_234n);
+    expect(parseUnits("0.00130434", 8)).toBe(130_434n);
+    expect(parseUnits("10", 18)).toBe(10n * 10n ** 18n);
+    expect(parseUnits(".5", 8)).toBe(50_000_000n);
+    expect(parseUnits("5.", 8)).toBe(500_000_000n);
+  });
+
+  it("rejects anything that is not a plain amount", () => {
+    for (const bad of ["", ".", "abc", "1,000", "-1", "1e3", "1.2.3"]) {
+      expect(parseUnits(bad, 18)).toBeNull();
+    }
+  });
+
+  it("rejects more precision than the token has", () => {
+    expect(parseUnits("0.123456789", 8)).toBeNull();
+    expect(parseUnits("0.12345678", 8)).toBe(12_345_678n);
+  });
+});
+
+describe("unitsToInput", () => {
+  it("truncates rather than rounds, so it never overstates a balance", () => {
+    expect(unitsToInput(7_179_999_999_999_999_999n, 18, 2)).toBe("7.17");
+    expect(unitsToInput(4_120_000n, 8, 6)).toBe("0.041200");
+    expect(unitsToInput(0n, 18, 2)).toBe("0.00");
+  });
+
+  it("round-trips through parseUnits without growing", () => {
+    const bal = 7_173_412_345_678_901_234n;
+    expect(parseUnits(unitsToInput(bal, 18, 2), 18)! <= bal).toBe(true);
   });
 });
